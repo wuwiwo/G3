@@ -1,0 +1,46 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background: #0d0d1a; color: #fff; overflow-x: hidden; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #1a1a2e; }
+::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+
+/* Attacker lunges forward */
+.lunge { animation: lungeAnim 0.35s ease-in-out; }
+@keyframes lungeAnim {
+  0% { transform: translateX(0) scale(1); }
+  30% { transform: translateX(12px) scale(1.05); }
+  60% { transform: translateX(-2px) scale(0.98); }
+  100% { transform: translateX(0) scale(1); }
+}
+
+/* Slash effect on target */
+.slash { animation: slashAnim 0.3s ease-out; }
+@keyframes slashAnim {
+  0% { transform: scale(1); filter: brightness(1); }
+  15% { transform: scale(1.08) rotate(-2deg); filter: brightness(2); }
+  30% { transform: scale(0.95) rotate(1deg); filter: brightness(0.6); }
+  60% { transform: scale(1.02); filter: brightness(1.2); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* Shake for skill hit */
+.shake { animation: shakeAnim 0.3s ease-in-out; }
+@keyframes shakeAnim {
+  0%,100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+@keyframes floatUp {
+  0% { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%,-120%) scale(1.2); }
+}
+@keyframes floatUpBubble {
+  0% { opacity: 1; transform: translateY(0) scale(0.8); }
+  20% { transform: translateY(-5px) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-40px) scale(0.9); }
+}
