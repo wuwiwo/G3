@@ -54,5 +54,5 @@ Error generating stack: `+e.message+`
 `;for(const W of c.stats||[])(W.totalDamageDealt>0||W.totalHealingDone>0)&&(I+=`${W.team==="ally"?"🟦":"🟥"}${W.name}: 输出${W.totalDamageDealt} 承伤${W.totalDamageReceived} 治疗${W.totalHealingDone}
 `);I+=`
 === 战斗日志 ===
-`,I+=c.battleLog.slice(-150).map(W=>`[${W.time.toFixed(1)}s] ${W.text}`).join(`
+`,I+=c.battleLog.map(W=>`[${W.time.toFixed(1)}s] ${W.text}`).join(`
 `),navigator.clipboard.writeText(I).catch(()=>{})},style:{padding:"4px 12px",fontSize:10,background:"#333",color:"#ccc",border:"none",borderRadius:4,cursor:"pointer"},children:"📋 一键复制"})})]}),C&&A.jsx(l1,{unit:C,onClose:()=>B(null)})]}):null};function Fu(c){return{padding:"6px 10px",fontSize:11,fontWeight:600,background:c,color:"#fff",border:"none",borderRadius:5,cursor:"pointer",whiteSpace:"nowrap"}}Yh.createRoot(document.getElementById("root")).render(A.jsx(J.StrictMode,{children:A.jsx(A1,{})}));
