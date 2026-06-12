@@ -13318,61 +13318,6 @@ const bjl = {
     aoe: { maxTargets: 2 }
   }
 };
-const ALL_CHARACTERS = [
-  // 兽族
-  pp,
-  hl,
-  yl,
-  hx,
-  zzx,
-  dxm,
-  lbmx,
-  ds,
-  mmx,
-  // 猎人
-  sszs,
-  bslr,
-  hqs,
-  mds,
-  zfyx,
-  lxgz,
-  // 战士
-  crzs,
-  hd,
-  fxz,
-  fdzs,
-  kzs,
-  slzs,
-  zqz,
-  // 法师
-  xdds,
-  sjsn,
-  bmxz,
-  srm,
-  ynfs,
-  syz,
-  zs,
-  xjl,
-  // 亡灵
-  wqqs,
-  wlgyz,
-  kldd,
-  klb,
-  yammxz,
-  dyq,
-  hyz,
-  mrsz,
-  swxz,
-  // 龙族
-  hlyl,
-  bsxl,
-  xyfl,
-  hbfl,
-  bjl,
-  lyz,
-  xcl,
-  dl
-];
 const zs = {
   id: "zs",
   name: "宙斯",
@@ -13499,6 +13444,55 @@ const lyz = {
     scriptId: "lyz_heal"
   }
 };
+const ALL_CHARACTERS = [
+  pp,
+  hl,
+  yl,
+  hx,
+  zzx,
+  dxm,
+  lbmx,
+  ds,
+  mmx,
+  sszs,
+  bslr,
+  hqs,
+  mds,
+  zfyx,
+  lxgz,
+  crzs,
+  hd,
+  fxz,
+  fdzs,
+  kzs,
+  slzs,
+  zqz,
+  xdds,
+  sjsn,
+  bmxz,
+  srm,
+  ynfs,
+  syz,
+  zs,
+  xjl,
+  wqqs,
+  wlgyz,
+  kldd,
+  klb,
+  yammxz,
+  dyq,
+  hyz,
+  mrsz,
+  swxz,
+  hlyl,
+  bsxl,
+  xyfl,
+  hbfl,
+  bjl,
+  lyz,
+  xcl,
+  dl
+];
 const CHARACTER_MAP = new Map(ALL_CHARACTERS.map((c) => [c.id, c]));
 const BOND_EFFECTS = {
   [Race.Beast]: { attackBonus: 25, defenseBonus: 15, special: "对低于50%HP敌人攻击附带20%吸血" },
