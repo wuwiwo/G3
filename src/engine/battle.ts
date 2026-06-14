@@ -263,10 +263,16 @@ export function initBattle(
     skillCasts: 0,
     autoAttackDamage: 0,
     skillDamage: 0,
+    physicalDamage: 0,
+    magicalDamage: 0,
+    pureDamage: 0,
     critCount: 0,
     critDamage: 0,
     blockCount: 0,
     blockReduced: 0,
+    lifeStealHealing: 0,
+    skillHealing: 0,
+    survivalTime: 0,
   }));
 
   const state: any = {
@@ -594,6 +600,7 @@ function updateAutoAttacks(state: any) {
         target.lastHitBy = unit.id;
         addStat(state, unit.id, "totalDamageDealt", result.finalDamage);
         addStat(state, unit.id, "autoAttackDamage", result.finalDamage);
+        addStat(state, unit.id, "physicalDamage", result.finalDamage);
         addStat(state, target.id, "totalDamageReceived", result.finalDamage);
         if (result.finalDamage > 0) {
           unit.lastHitTarget = target.id;
@@ -613,6 +620,7 @@ function updateAutoAttacks(state: any) {
               const heal = Math.floor(result.finalDamage * 0.2);
               unit.currentHp = Math.min(unit.maxHp, unit.currentHp + heal);
               addStat(state, unit.id, "totalHealingDone", heal);
+              addStat(state, unit.id, "lifeStealHealing", heal);
             }
           }
           // 神谕者天赋：攻击治疗
@@ -628,6 +636,7 @@ function updateAutoAttacks(state: any) {
               const heal = Math.floor(unit.currentAttack * 0.4);
               t.currentHp = Math.min(t.maxHp, t.currentHp + heal);
               addStat(state, unit.id, "totalHealingDone", heal);
+              addStat(state, unit.id, "skillHealing", heal);
             }
           }
         }
@@ -642,6 +651,7 @@ function updateDeaths(state: any) {
     if (u.currentHp > 0 || u.isDead) continue;
     u.isDead = true;
     addStat(state, u.id, "deaths", 1);
+    addStat(state, u.id, "survivalTime", state.time);
     // 神谕者阵亡触发：治疗全场法师5s
     if (u.def.id === "syz") {
       state._syzDeathTime = state.time;
@@ -770,6 +780,10 @@ function updateVictory(state: any) {
   if (a.length === 0 || e.length === 0) {
     state.phase = "finished";
     state.winner = a.length > 0 ? "ally" : "enemy";
+    // Record survival time for all alive units
+    for (const u of state.units) {
+      if (!u.isDead) addStat(state, u.id, "survivalTime", state.time);
+    }
     state.battleLog.push({
       time: state.time,
       text: `🏁 ${state.winner === "ally" ? "我方" : "敌方"}胜利！`,
@@ -986,6 +1000,16 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         t.lastAction = { time: state.time, isTarget: true };
         addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
         addStat(state, caster.id, "skillDamage", result.finalDamage);
+        addStat(
+          state,
+          caster.id,
+          dmgFormula.type === "physical"
+            ? "physicalDamage"
+            : dmgFormula.type === "magical"
+              ? "magicalDamage"
+              : "pureDamage",
+          result.finalDamage
+        );
         addStat(state, t.id, "totalDamageReceived", result.finalDamage);
         if (result.isCrit) {
           addStat(state, caster.id, "critCount", 1);
@@ -1009,6 +1033,7 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
               caster.maxHp,
               caster.currentHp + lsHeal
             );
+            addStat(state, caster.id, "lifeStealHealing", lsHeal);
             log.push({
               time: state.time,
               text: `💉 ${pfx(caster)} 技能吸血 +${lsHeal}`,
@@ -1024,6 +1049,7 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
               caster.maxHp,
               caster.currentHp + lsHeal
             );
+            addStat(state, caster.id, "lifeStealHealing", lsHeal);
             log.push({
               time: state.time,
               text: `🔗 ${pfx(caster)} 链接吸血 +${lsHeal}`,
@@ -1076,6 +1102,7 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
       t.lastHeal = { value: amount, time: state.time };
       t.lastAction = { time: state.time, isTarget: true };
       addStat(state, caster.id, "totalHealingDone", amount);
+      addStat(state, caster.id, "skillHealing", amount);
       addStat(state, t.id, "totalHealingReceived", amount);
       log.push({
         time: state.time,

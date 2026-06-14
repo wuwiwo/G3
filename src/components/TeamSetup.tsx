@@ -198,9 +198,12 @@ function TeamPanel({
       charId: null,
       equipmentId: null,
     }));
-    (t?.units || t || []).slice(0, 9).forEach((u: any, i: number) => {
-      if (u.charId)
-        ng[i] = { charId: u.charId, equipmentId: u.equipmentId || null };
+    (t?.units || t || []).slice(0, 9).forEach((u: any) => {
+      if (u.charId) {
+        const idx = (u.row ?? 0) * 3 + (u.col ?? 0);
+        if (idx >= 0 && idx < 9)
+          ng[idx] = { charId: u.charId, equipmentId: u.equipmentId || null };
+      }
     });
     setGrid(ng);
     emit(ng);
@@ -228,6 +231,18 @@ function TeamPanel({
       >
         <span style={{ fontSize: 14, fontWeight: 700, color }}>
           {label} {placed}/8
+          {sel && (
+            <span
+              style={{
+                fontSize: 9,
+                color: "#4caf50",
+                marginLeft: 4,
+                fontWeight: 400,
+              }}
+            >
+              ✓已选
+            </span>
+          )}
         </span>
         <div style={{ display: "flex", gap: 3 }}>
           <button
@@ -606,6 +621,20 @@ function TeamPanel({
           </div>
         </div>
       )}
+      {/* Tip */}
+      <div
+        style={{
+          fontSize: 8,
+          color: "#444",
+          marginTop: 2,
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <span>
+          {sel ? "⬆️点击格子放置选中角色" : "点击名→格子 · 右键移除 · 留1空"}
+        </span>
+      </div>
       {detail && <CharDetail char={detail} onClose={() => setDetail(null)} />}
     </div>
   );
