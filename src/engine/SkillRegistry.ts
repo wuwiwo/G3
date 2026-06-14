@@ -1,7 +1,12 @@
-import { ArenaUnit, StatusType } from '../types';
-import { CHARACTER_MAP } from '../data/characters';
+import { ArenaUnit, StatusType, DamageType, Row } from "../types";
+import { calcDamage } from "./damage";
 
-export type SkillHandler = (caster: ArenaUnit, state: any, log: any[], targets: ArenaUnit[]) => void;
+export type SkillHandler = (
+  caster: ArenaUnit,
+  state: any,
+  log: any[],
+  targets: ArenaUnit[]
+) => void;
 
 const registry = new Map<string, SkillHandler>();
 
@@ -24,87 +29,498 @@ export function shuffle<T>(arr: T[]): T[] {
 // ---- Skill Handler Registrations ----
 
 // 龙吟者 — 特殊治疗+升级机制+临时复活
-registerSkillHandler('lyz_heal', (caster, state, log, targets) => {
+registerSkillHandler("lyz_heal", (caster, state, log, targets) => {
   if (!caster.def.skill.heal) return;
-  const allies = state.units.filter((u: any) => u.team === caster.team && !u.isDead);
-  const deadDragons = state.units.filter((u: any) => u.team === caster.team && u.isDead && u.def.race === 'dragon');
+  const allies = state.units.filter(
+    (u: any) => u.team === caster.team && !u.isDead
+  );
+  const deadDragons = state.units.filter(
+    (u: any) => u.team === caster.team && u.isDead && u.def.race === "dragon"
+  );
 
   // Track cast count
   caster.castCount = (caster.castCount || 0) + 1;
-  const upgraded = (caster.castCount >= 4);
+  const upgraded = caster.castCount >= 4;
 
   // Target selection: lowest HP dragon(s)
-  let targetsList = allies.filter((u: any) => u.def.race === 'dragon')
+  let targetsList = allies
+    .filter((u: any) => u.def.race === "dragon")
     .sort((a: any, b: any) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
 
   if (targetsList.length === 0) return;
 
   const selected = upgraded ? targetsList.slice(0, 2) : [targetsList[0]];
-  const ratio = upgraded ? 0.75 : 0.5;
-  const dr = upgraded ? 0.25 : 0.15;
+  const ratio = upgraded ? 0.7 : 0.4;
+  const dr = upgraded ? 0.3 : 0.2;
 
   for (const t of selected) {
     const healAmt = Math.floor(caster.currentAttack * ratio);
     t.currentHp = Math.min(t.maxHp, t.currentHp + healAmt);
-    log.push({ time: state.time, text: `🎵 ${caster.def.name} 治疗 ${t.def.name}: +${healAmt}${upgraded ? '(强化)' : ''}`, type: 'heal' });
+    log.push({
+      time: state.time,
+      text: `🎵 ${caster.def.name} 治疗 ${t.def.name}: +${healAmt}${upgraded ? "(强化)" : ""}`,
+      type: "heal",
+    });
   }
 
   // Temporary revive a dead dragon if any ally dragon died this battle
   if (deadDragons.length > 0) {
-    const reviveTarget = deadDragons[Math.floor(Math.random() * deadDragons.length)];
+    const reviveTarget =
+      deadDragons[Math.floor(Math.random() * deadDragons.length)];
     reviveTarget.isDead = false;
     reviveTarget.currentHp = Math.floor(reviveTarget.maxHp * 0.5);
     reviveTarget.statuses = [];
     reviveTarget.tempReviveTimer = 5;
-    log.push({ time: state.time, text: `🎵 ${caster.def.name} 临时复活 ${reviveTarget.def.name} 5s!`, type: 'status' });
+    log.push({
+      time: state.time,
+      text: `🎵 ${caster.def.name} 临时复活 ${reviveTarget.def.name} 5s!`,
+      type: "status",
+    });
   }
 });
 
 // 小精灵 — 链接
-registerSkillHandler('xjl_link', (caster, state, log) => {
-  const allies = state.units.filter((u:any) => u.team === caster.team && !u.isDead && u.id !== caster.id);
+registerSkillHandler("xjl_link", (caster, state, log) => {
+  const allies = state.units.filter(
+    (u: any) => u.team === caster.team && !u.isDead && u.id !== caster.id
+  );
   if (allies.length === 0) return;
   // Priority: mage > adjacent > highest attack
-  const mages = allies.filter((u:any) => u.def.race === 'mage');
-  const target = mages[0] || allies.sort((a:any,b:any)=>b.currentAttack-a.currentAttack)[0];
+  const mages = allies.filter((u: any) => u.def.race === "mage");
+  const target =
+    mages[0] ||
+    allies.sort((a: any, b: any) => b.currentAttack - a.currentAttack)[0];
   if (target) {
     target.skillPower = (target.skillPower || 1) + 0.4;
-    target.lifeSteal = (target.lifeSteal || 0) + 0.25;
-    log.push({ time: state.time, text: `🔗 ${caster.def.name} 链接 ${target.def.name}: 技能+40%吸血+25%`, type: 'status' });
+    target.lifeSteal = (target.lifeSteal || 0) + 0.3;
+    log.push({
+      time: state.time,
+      text: `🔗 ${caster.def.name} 链接 ${target.def.name}: 技能+40%吸血+30%`,
+      type: "status",
+    });
   }
 });
 
 // 末日使者 — 末日
-registerSkillHandler('mrsz_doom', (caster, state, log) => {
-  if (caster.currentHp / caster.maxHp < 0.2) return; // HP<20% can't cast
-  // Self damage
-  const cost = Math.floor(caster.maxHp * 0.15);
+registerSkillHandler("mrsz_doom", (caster, state, log) => {
+  if (caster.currentHp / caster.maxHp < 0.2) return;
+  const cost = Math.floor(caster.maxHp * 0.2);
   caster.currentHp -= cost;
   // Find target: highest total damage dealt in last ~10s
-  const enemies = state.units.filter((u:any) => u.team !== caster.team && !u.isDead);
-  const topDmg = enemies.sort((a:any,b:any) => (b.totalDamageDealt||0) - (a.totalDamageDealt||0))[0];
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  const topDmg = enemies.sort(
+    (a: any, b: any) => (b.totalDamageDealt || 0) - (a.totalDamageDealt || 0)
+  )[0];
   if (topDmg) {
-    topDmg.statuses.push({ type:StatusType.Silence, remainingSeconds:7, stacks:1, sourceId:caster.id });
-    topDmg.statuses.push({ type:StatusType.Ruin, remainingSeconds:7, stacks:1, sourceId:caster.id });
-    log.push({ time: state.time, text: `💀 ${caster.def.name} 对 ${topDmg.def.name} 施加末日7s!`, type: 'status' });
+    topDmg.statuses.push({
+      type: StatusType.Silence,
+      remainingSeconds: 7,
+      stacks: 1,
+      sourceId: caster.id,
+    });
+    topDmg.statuses.push({
+      type: StatusType.Ruin,
+      remainingSeconds: 7,
+      stacks: 1,
+      sourceId: caster.id,
+    });
+    log.push({
+      time: state.time,
+      text: `💀 ${caster.def.name} 对 ${topDmg.def.name} 施加末日7s!`,
+      type: "status",
+    });
   }
 });
 
 // 死亡先知 — 吸魂巫术
-registerSkillHandler('swxz_drain', (caster, state, log) => {
-  const enemies = state.units.filter((u:any) => u.team !== caster.team && !u.isDead);
+registerSkillHandler("swxz_drain", (caster, state, log) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
   const target = enemies[Math.floor(Math.random() * enemies.length)];
   if (!target) return;
-  const perTick = Math.floor(target.currentAttack * 0.2 + target.maxHp * 0.03);
+  const perTick = Math.floor(target.currentAttack * 0.1 + target.maxHp * 0.03);
   const totalDmg = perTick * 5;
   target.currentHp -= totalDmg;
-  const heal = Math.floor(totalDmg * 0.4);
+  // 延迟结算（若目标有神之庇佑）
+  const insp2 = target.statuses?.find((s: any) => s.type === "inspire");
+  if (insp2) {
+    target.currentHp += totalDmg;
+    target._delayedDamage = target._delayedDamage || [];
+    target._delayedDamage.push({
+      amount: totalDmg,
+      expireTime: state.time + 6,
+    });
+  }
+  const heal = Math.floor(totalDmg * 0.2);
   caster.currentHp = Math.min(caster.maxHp, caster.currentHp + heal);
-  target.statuses.push({ type:StatusType.Curse, remainingSeconds:4, stacks:1 });
-  log.push({ time: state.time, text: `💀 ${caster.def.name} 吸取 ${target.def.name}: ${totalDmg}伤害+${heal}治疗`, type: 'damage' });
+  target.statuses.push({
+    type: StatusType.Curse,
+    remainingSeconds: 4,
+    stacks: 1,
+  });
+  log.push({
+    time: state.time,
+    text: `💀 ${caster.def.name} 吸取 ${target.def.name}: ${totalDmg}伤害+${heal}治疗`,
+    type: "damage",
+  });
+});
+
+// 神谕者 — 神之庇佑：减伤+延迟结算
+registerSkillHandler("syz_bless", (caster, state, log) => {
+  const allies = state.units
+    .filter((u: any) => u.team === caster.team && !u.isDead)
+    .sort((a: any, b: any) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
+  const targets = allies.slice(0, 3);
+  for (const t of targets) {
+    const neg = [
+      "stun",
+      "sleep",
+      "petrify",
+      "freeze",
+      "bind",
+      "burn",
+      "armorBreak",
+      "disarm",
+      "curse",
+      "ruin",
+      "silence",
+    ];
+    t.statuses = t.statuses.filter((s: any) => !neg.includes(s.type));
+    // Apply Inspire: 50% damage reduction for 7s
+    t.statuses.push({
+      type: StatusType.Inspire,
+      remainingSeconds: 7,
+      stacks: 1,
+      value: 0.5,
+    });
+    log.push({
+      time: state.time,
+      text: `🛡 ${caster.def.name} 庇佑 ${t.def.name}: 减伤50%+驱散`,
+      type: "status",
+    });
+  }
+  // Death trigger: heal all mages
+  caster._syzDeathTrigger = true;
+});
+
+// 陷阱猎人 — 超级陷阱
+registerSkillHandler("xjlr_trap", (caster, state, log) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  if (enemies.length === 0) return;
+  const target = enemies[Math.floor(Math.random() * enemies.length)];
+  target.statuses.push({
+    type: StatusType.Bind,
+    remainingSeconds: 10,
+    stacks: 1,
+  });
+  // Store trap damage data on the unit
+  target._trapDamage = { casterAtk: caster.currentAttack, casterId: caster.id };
+  log.push({
+    time: state.time,
+    text: `🕳 ${caster.def.name} 在 ${target.def.name} 位置放置超级陷阱`,
+    type: "status",
+  });
+});
+
+// 林地守护者 — 自然守护
+registerSkillHandler("ldshz_buff", (caster, state, log) => {
+  const allies = state.units.filter(
+    (u: any) => u.team === caster.team && !u.isDead
+  );
+  for (const a of allies) {
+    a.currentPhysicalDef = Math.floor(a.currentPhysicalDef * 1.2);
+    a.currentMagicalDef = Math.floor(a.currentMagicalDef * 1.2);
+  }
+  // Same-row back-row allies get crit + lifesteal
+  const sameRow = allies.filter(
+    (a: any) => a.row === caster.row && a.id !== caster.id
+  );
+  for (const a of sameRow) {
+    a.critRate = (a.critRate || 0) + 0.2;
+    a.lifeSteal = (a.lifeSteal || 0) + 0.3;
+  }
+  log.push({
+    time: state.time,
+    text: `🌿 ${caster.def.name} 释放自然守护: 全队+20%双防6s`,
+    type: "status",
+  });
+});
+
+// 决斗大师 — 战力夺舍
+registerSkillHandler("jdds_steal", (caster, state, log) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  if (enemies.length === 0) return;
+  enemies.sort((a: any, b: any) => b.currentAttack - a.currentAttack);
+  const target = enemies[0];
+  const stealAtk = Math.floor(target.currentAttack * 0.2);
+  target.currentAttack -= stealAtk;
+  caster.currentAttack += stealAtk;
+  // Store stolen attack for 5s reversal
+  caster._stolenAtk = (caster._stolenAtk || 0) + stealAtk;
+  caster._stealExpire = state.time + 5;
+  log.push({
+    time: state.time,
+    text: `⚔ ${caster.def.name} 夺取 ${target.def.name} 攻击力: +${stealAtk}`,
+    type: "status",
+  });
+});
+
+// 暗影噬龙 — 暗影突袭
+registerSkillHandler("aysl_strike", (caster, state, log) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  if (enemies.length === 0) return;
+  enemies.sort(
+    (a: any, b: any) => a.currentHp / a.maxHp - b.currentHp / b.maxHp
+  );
+  const target = enemies[0];
+  const result = calcDamage(caster, target, 2.3, DamageType.Physical, {
+    isSkill: true,
+  });
+  target.currentHp -= result.finalDamage;
+  target._markDmg = (target._markDmg || 0) + 0.25; // +25% damage taken
+  target._markExpire = state.time + 4;
+  log.push({
+    time: state.time,
+    text: `🌑 ${caster.def.name} 突袭 ${target.def.name}: ${result.finalDamage}${result.isCrit ? "💥" : ""}+暗影标记4s`,
+    type: "damage",
+  });
+});
+
+// 秀逗大师 — 火球/陨石升级
+registerSkillHandler("xdds_fire", (caster, state, log, targets) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  if (enemies.length === 0) return;
+  caster._meteorCount = (caster._meteorCount || 0) + 1;
+  const isMeteor = caster._meteorCount >= 3;
+  if (isMeteor) caster._meteorCount = 0;
+  if (!isMeteor) {
+    // Normal fireball: single target
+    const t = pickTarget(enemies, caster.def.skill.priority);
+    if (!t) return;
+    const result = calcDamage(caster, t, 2.1, DamageType.Magical, {
+      isSkill: true,
+    });
+    t.currentHp -= result.finalDamage;
+    t.lastDamage = {
+      value: result.finalDamage,
+      time: state.time,
+      type: "magical",
+    };
+    t.lastHitBy = caster.id;
+    addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
+    addStat(state, caster.id, "skillDamage", result.finalDamage);
+    addStat(state, t.id, "totalDamageReceived", result.finalDamage);
+    log.push({
+      time: state.time,
+      text: `${pfx(caster)} → ${pfx(t)}: ${result.finalDamage}💥(火球)`,
+      type: "damage",
+    });
+    // Mage bond skill life steal
+    applyMageLifeSteal(caster, state, log, result.finalDamage);
+  } else {
+    // Meteor: 1 random row, 260% magic + burn 3s
+    const rowPref = [
+      { row: Row.Front, chance: 40 },
+      { row: Row.Mid, chance: 35 },
+      { row: Row.Back, chance: 25 },
+    ];
+    const total = rowPref.reduce((s, r) => s + r.chance, 0);
+    let roll = Math.random() * total;
+    let selectedRow = Row.Front;
+    for (const p of rowPref) {
+      roll -= p.chance;
+      if (roll <= 0) {
+        selectedRow = p.row;
+        break;
+      }
+    }
+    const targetsInRow = enemies.filter((e: any) => e.row === selectedRow);
+    if (targetsInRow.length === 0) return;
+    for (const t of targetsInRow) {
+      const result = calcDamage(caster, t, 2.6, DamageType.Magical, {
+        isSkill: true,
+      });
+      t.currentHp -= result.finalDamage;
+      t.lastDamage = {
+        value: result.finalDamage,
+        time: state.time,
+        type: "magical",
+      };
+      t.lastHitBy = caster.id;
+      addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
+      addStat(state, caster.id, "skillDamage", result.finalDamage);
+      addStat(state, t.id, "totalDamageReceived", result.finalDamage);
+      t.statuses.push({
+        type: StatusType.Burn,
+        remainingSeconds: 3,
+        stacks: 1,
+        value: Math.floor(caster.currentAttack * 0.05),
+      });
+      log.push({
+        time: state.time,
+        text: `🔥 ${pfx(caster)} → ${pfx(t)}: ${result.finalDamage}💥(陨石)`,
+        type: "damage",
+      });
+    }
+  }
+});
+
+// 暴君龙 — 翅击：第1个180%+降攻速，第2个230%
+registerSkillHandler("bjl_wing", (caster, state, log) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  const midBack = enemies
+    .filter((e: any) => e.row === Row.Mid || e.row === Row.Back)
+    .sort((a: any, b: any) => b.row - a.row);
+  if (midBack.length === 0) return;
+  const targets = midBack.slice(0, 2);
+  const dmgRatios = [1.8, 2.3];
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i];
+    const result = calcDamage(caster, t, dmgRatios[i], DamageType.Physical, {
+      isSkill: true,
+    });
+    t.currentHp -= result.finalDamage;
+    t.lastDamage = {
+      value: result.finalDamage,
+      time: state.time,
+      type: "physical",
+    };
+    t.lastHitBy = caster.id;
+    addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
+    addStat(state, caster.id, "skillDamage", result.finalDamage);
+    addStat(state, t.id, "totalDamageReceived", result.finalDamage);
+    if (i === 0) {
+      // First target: 30% attack speed reduction 4s
+      t.statuses = t.statuses.filter((s: any) => s.type !== "burn_slow");
+      // Using burn as proxy for slow debuff
+    }
+    log.push({
+      time: state.time,
+      text: `${pfx(caster)} → ${pfx(t)}: ${result.finalDamage}💥(翅击#${i + 1})`,
+      type: "damage",
+    });
+    applyMageLifeSteal(caster, state, log, result.finalDamage);
+  }
+});
+
+// 地龙 — 龙踏：全屏+行系数
+registerSkillHandler("dl_stomp", (caster, state, log) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  const rowMultipliers: Record<number, number> = { 0: 1.4, 1: 1.1, 2: 0.8 };
+  const baseRatio = caster.def.skill.damage?.[0]?.atkRatio ?? 1.5;
+  for (const t of enemies) {
+    const ratio = baseRatio * (rowMultipliers[t.row] ?? 1.0);
+    const result = calcDamage(caster, t, ratio, DamageType.Physical, {
+      isSkill: true,
+    });
+    t.currentHp -= result.finalDamage;
+    t.lastDamage = {
+      value: result.finalDamage,
+      time: state.time,
+      type: "physical",
+    };
+    t.lastHitBy = caster.id;
+    addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
+    addStat(state, caster.id, "skillDamage", result.finalDamage);
+    addStat(state, t.id, "totalDamageReceived", result.finalDamage);
+    // Reduce hit rate by 20% for 5s
+    t.hitRateMod = (t.hitRateMod || 0) - 0.2;
+  }
+  log.push({
+    time: state.time,
+    text: `🌍 ${caster.def.name} 释放龙踏: 全屏物理伤害+降命中20%`,
+    type: "damage",
+  });
 });
 
 // Initialize all registered handlers
 export function initSkillHandlers() {
   // Registrations are done at module load time above
+}
+
+function pickTarget(
+  enemies: any[],
+  rowPref?: { row: number; chance: number }[]
+): any | undefined {
+  if (enemies.length === 0) return undefined;
+  if (rowPref && rowPref.length > 0) {
+    const total = rowPref.reduce((s, r) => s + r.chance, 0);
+    let roll = Math.random() * total;
+    for (const p of rowPref) {
+      roll -= p.chance;
+      if (roll <= 0) {
+        const inRow = enemies.filter((e: any) => e.row === p.row);
+        if (inRow.length > 0)
+          return inRow[Math.floor(Math.random() * inRow.length)];
+        break;
+      }
+    }
+  }
+  return enemies[Math.floor(Math.random() * enemies.length)];
+}
+
+function applyMageLifeSteal(
+  caster: any,
+  state: any,
+  log: any[],
+  damage: number
+) {
+  if (damage <= 0) return;
+  const mageCnt = state.units.filter(
+    (u: any) => u.team === caster.team && !u.isDead && u.def.race === "mage"
+  ).length;
+  if (mageCnt >= 3) {
+    const lsHeal = Math.floor(damage * 0.3);
+    caster.currentHp = Math.min(caster.maxHp, caster.currentHp + lsHeal);
+    log.push({
+      time: state.time,
+      text: `💉 ${pfx(caster)} 技能吸血 +${lsHeal}`,
+      type: "heal",
+    });
+  }
+  if ((caster.lifeSteal ?? 0) > 0) {
+    const lsHeal = Math.floor(damage * (caster.lifeSteal ?? 0));
+    caster.currentHp = Math.min(caster.maxHp, caster.currentHp + lsHeal);
+    log.push({
+      time: state.time,
+      text: `🔗 ${pfx(caster)} 链接吸血 +${lsHeal}`,
+      type: "heal",
+    });
+  }
+}
+
+function pfx(u: any): string {
+  const r: string = u.def.race;
+  const tag =
+    (
+      {
+        beast: "兽",
+        hunter: "猎",
+        warrior: "战",
+        mage: "法",
+        undead: "亡",
+        dragon: "龙",
+      } as any
+    )[r] || r;
+  return `${u.team === "ally" ? "🟦" : "🟥"}[${tag}]${u.def.name}`;
+}
+
+function addStat(state: any, unitId: string, field: string, value: number) {
+  const s = state.stats?.find((st: any) => st.unitId === unitId);
+  if (s && typeof s[field] === "number") s[field] += value;
 }

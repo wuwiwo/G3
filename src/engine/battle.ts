@@ -1,22 +1,43 @@
 import {
-  ArenaUnit, BattleState, BattleLogEntry,
-  Row, StatusType, DamageType,
-} from '../types';
-import { BattleStats } from '../types/stats';
-import { calcDamage, calcHeal, applyFatalStrike } from './damage';
-import { getActiveBonds } from '../data/races';
-import { getSkillHandler } from './SkillRegistry';
-import { CHARACTER_MAP } from '../data/characters';
+  ArenaUnit,
+  BattleState,
+  BattleLogEntry,
+  Row,
+  StatusType,
+  DamageType,
+  Equipment,
+} from "../types";
+import { BattleStats } from "../types/stats";
+import { calcDamage, calcHeal, applyFatalStrike } from "./damage";
+import { getActiveBonds } from "../data/races";
+import { getSkillHandler } from "./SkillRegistry";
+import { CHARACTER_MAP } from "../data/characters";
+import { EQUIPMENT_MAP } from "../data/equipment";
 
 let nextUnitId = 0;
 let nextLogId = 0;
 
-function logEntry(time:number,text:string,type:BattleLogEntry['type'],extra?:Partial<BattleLogEntry>):BattleLogEntry {
-  return {id:`l${nextLogId++}`,time,text,type,...extra};
+function logEntry(
+  time: number,
+  text: string,
+  type: BattleLogEntry["type"],
+  extra?: Partial<BattleLogEntry>
+): BattleLogEntry {
+  return { id: `l${nextLogId++}`, time, text, type, ...extra };
 }
 
 function pfx(u: ArenaUnit): string {
-  return (u.team === 'ally' ? '🟦' : '🟥') + u.def.name;
+  const r = u.def.race;
+  const tag =
+    {
+      beast: "兽",
+      hunter: "猎",
+      warrior: "战",
+      mage: "法",
+      undead: "亡",
+      dragon: "龙",
+    }[r] || r;
+  return `${u.team === "ally" ? "🟦" : "🟥"}[${tag}]${u.def.name}`;
 }
 
 /** Fisher-Yates shuffle */
@@ -33,33 +54,57 @@ function lvScale(base: number, growth: number, level: number) {
   return base + growth * (level - 1);
 }
 
-export function createUnit(def: any, level: number, team: 'ally' | 'enemy', row: Row, col: number = 0): ArenaUnit {
-  const hp = lvScale(def.stats.hp, def.growth.hp, level);
+export function createUnit(
+  def: any,
+  level: number,
+  team: "ally" | "enemy",
+  row: Row,
+  col: number = 0,
+  equipmentId?: string
+): ArenaUnit {
+  // def.stats are already Lv.100 values, use directly
   return {
-    id: `u_${nextUnitId++}`, def, level, team, row, col,
-    currentHp: hp, maxHp: hp,
-    currentAttack: lvScale(def.stats.attack, def.growth.attack, level),
-    currentPhysicalDef: lvScale(def.stats.physicalDef, def.growth.physicalDef, level),
-    currentMagicalDef: lvScale(def.stats.magicalDef, def.growth.magicalDef, level),
-    cooldownRemaining: def.skill.cooldown * 0.5,
-    castTimer: 0, isCasting: false,
-    attackTimer: Math.random() * def.stats.attackInterval,
-    isDead: false, statuses: [],
+    id: `u_${nextUnitId++}`,
+    def,
+    level,
+    team,
+    row,
+    col,
+    equipmentId,
+    currentHp: def.stats.hp,
+    maxHp: def.stats.hp,
+    currentAttack: def.stats.attack,
+    currentPhysicalDef: def.stats.physicalDef,
+    currentMagicalDef: def.stats.magicalDef,
+    cooldownRemaining: def.skill.cooldown * 0.9,
+    castTimer: 0,
+    isCasting: false,
+    attackTimer: def.stats.attackInterval * (0.5 + Math.random() * 0.5),
+    isDead: false,
+    statuses: [],
     autoAttackTargetId: undefined,
-    evasion: def.id === 'sszs' ? (0.25) : 0,
-    hitRateMod: def.id === 'hd' ? -0.1 : 0,
+    evasion: def.id === "sszs" ? 0.25 : 0,
+    hitRateMod: def.id === "hd" ? -0.1 : 0,
   };
 }
 
-function getAlive(state: BattleState, team?: 'ally' | 'enemy'): ArenaUnit[] {
-  return state.units.filter(u => !u.isDead && (team === undefined || u.team === team));
+function getAlive(state: BattleState, team?: "ally" | "enemy"): ArenaUnit[] {
+  return state.units.filter(
+    (u) => !u.isDead && (team === undefined || u.team === team)
+  );
 }
 
-function getEnemies(state: BattleState, selfTeam: 'ally' | 'enemy'): ArenaUnit[] {
-  return state.units.filter(u => u.team !== selfTeam && !u.isDead);
+function getEnemies(
+  state: BattleState,
+  selfTeam: "ally" | "enemy"
+): ArenaUnit[] {
+  return state.units.filter((u) => u.team !== selfTeam && !u.isDead);
 }
 
-function pickTarget(enemies: ArenaUnit[], rowPref?: { row: Row; chance: number }[]): ArenaUnit | undefined {
+function pickTarget(
+  enemies: ArenaUnit[],
+  rowPref?: { row: Row; chance: number }[]
+): ArenaUnit | undefined {
   if (enemies.length === 0) return undefined;
   if (rowPref && rowPref.length > 0) {
     // Weighted random by row
@@ -68,24 +113,33 @@ function pickTarget(enemies: ArenaUnit[], rowPref?: { row: Row; chance: number }
     for (const p of rowPref) {
       roll -= p.chance;
       if (roll <= 0) {
-        const inRow = enemies.filter(e => e.row === p.row);
-        if (inRow.length > 0) return inRow[Math.floor(Math.random() * inRow.length)];
+        const inRow = enemies.filter((e) => e.row === p.row);
+        if (inRow.length > 0)
+          return inRow[Math.floor(Math.random() * inRow.length)];
         break;
       }
     }
   }
   // Default: front row weighted
-  const hasFront = enemies.some(e => e.row === Row.Front);
+  const hasFront = enemies.some((e) => e.row === Row.Front);
   const chances = hasFront
-    ? [{ row: Row.Front, c: 50 }, { row: Row.Mid, c: 30 }, { row: Row.Back, c: 20 }]
-    : [{ row: Row.Mid, c: 60 }, { row: Row.Back, c: 40 }];
+    ? [
+        { row: Row.Front, c: 50 },
+        { row: Row.Mid, c: 30 },
+        { row: Row.Back, c: 20 },
+      ]
+    : [
+        { row: Row.Mid, c: 60 },
+        { row: Row.Back, c: 40 },
+      ];
   const total = chances.reduce((s, r) => s + r.c, 0);
   let roll = Math.random() * total;
   for (const p of chances) {
     roll -= p.c;
     if (roll <= 0) {
-      const inRow = enemies.filter(e => e.row === p.row);
-      if (inRow.length > 0) return inRow[Math.floor(Math.random() * inRow.length)];
+      const inRow = enemies.filter((e) => e.row === p.row);
+      if (inRow.length > 0)
+        return inRow[Math.floor(Math.random() * inRow.length)];
       break;
     }
   }
@@ -93,48 +147,61 @@ function pickTarget(enemies: ArenaUnit[], rowPref?: { row: Row; chance: number }
 }
 
 export function initBattle(
-  allyChars: { charId: string; row: Row; col?: number }[],
-  enemyChars: { charId: string; row: Row; col?: number }[],
+  allyChars: { charId: string; row: Row; col?: number; equipmentId?: string }[],
+  enemyChars: { charId: string; row: Row; col?: number; equipmentId?: string }[]
 ): BattleState & { stats: BattleStats[] } {
   nextUnitId = 0;
-  const makeUnits = (chars: { charId: string; row: Row }[], team: 'ally' | 'enemy') =>
-    chars.map(c => {
-      const def = CHARACTER_MAP.get(c.charId);
-      return def ? createUnit(def, 100, team, c.row, c.col ?? 0) : null;
-    }).filter(Boolean) as ArenaUnit[];
+  const makeUnits = (
+    chars: { charId: string; row: Row; col?: number; equipmentId?: string }[],
+    team: "ally" | "enemy"
+  ) =>
+    chars
+      .map((c) => {
+        const def = CHARACTER_MAP.get(c.charId);
+        return def
+          ? createUnit(def, 100, team, c.row, c.col ?? 0, c.equipmentId)
+          : null;
+      })
+      .filter(Boolean) as ArenaUnit[];
 
-  const allies = makeUnits(allyChars, 'ally');
-  const enemies = makeUnits(enemyChars, 'enemy');
+  const allies = makeUnits(allyChars, "ally");
+  const enemies = makeUnits(enemyChars, "enemy");
   const units = [...allies, ...enemies];
 
   // Apply bonds
   const apply = (us: ArenaUnit[]) => {
-    let dragonCount = 0;
-    for (const [race, effect] of getActiveBonds(us)) {
+    for (const [race, { count, effect }] of getActiveBonds(us)) {
+      const bonus = 1 + effect.attackBonus / 100;
+      const defBonus = 1 + effect.defenseBonus / 100;
       for (const u of us) {
         if (u.def.race === race) {
-          if (effect.attackBonus) u.currentAttack *= 1 + effect.attackBonus / 100;
+          if (effect.attackBonus) u.currentAttack *= bonus;
           if (effect.defenseBonus) {
-            u.currentPhysicalDef *= 1 + effect.defenseBonus / 100;
-            u.currentMagicalDef *= 1 + effect.defenseBonus / 100;
+            u.currentPhysicalDef *= defBonus;
+            u.currentMagicalDef *= defBonus;
+          }
+          if (effect.hpBonus) {
+            const mult = 1 + effect.hpBonus / 100;
+            u.maxHp = Math.floor(u.maxHp * mult);
+            u.currentHp = Math.floor(u.currentHp * mult);
           }
         }
       }
-      if (race === 'warrior') {
+      // Dragon: starting cooldown reduction + damage reduction
+      if (race === "dragon") {
+        const cdMult = count >= 4 ? 0.2 : 0.7; // 80% or 30% reduction
+        const drVal = count >= 4 ? 0.25 : 0.5; // 75% or 50% reduction
+        const drDuration = count >= 4 ? 7 : 5;
         for (const u of us) {
-          if (u.def.race === race) {
-            u.maxHp = Math.floor(u.maxHp * 1.5);
-            u.currentHp = Math.floor(u.currentHp * 1.5);
+          if (u.def.race === "dragon") {
+            u.cooldownRemaining *= cdMult;
+            u.statuses.push({
+              type: StatusType.Inspire,
+              remainingSeconds: drDuration,
+              stacks: 1,
+              value: drVal,
+            });
           }
-        }
-      }
-      if (race === 'dragon') dragonCount = us.filter(u=>u.def.race==='dragon').length;
-    }
-    // Dragon bond: starting cooldown reduced by additional 50%
-    if (dragonCount >= 3) {
-      for (const u of us) {
-        if (u.def.race === 'dragon') {
-          u.cooldownRemaining *= 0.4; // v1.6: 4龙=60%缩短 → 40%剩余
         }
       }
     }
@@ -142,45 +209,194 @@ export function initBattle(
   apply(allies);
   apply(enemies);
 
-  const stats: BattleStats[] = units.map(u => ({
-    unitId: u.id, name: u.def.name, race: u.def.race,
-    team: u.team, totalDamageDealt: 0, totalDamageReceived: 0,
-    totalHealingDone: 0, totalHealingReceived: 0, kills: 0, deaths: 0, skillCasts: 0,
-    autoAttackDamage: 0, skillDamage: 0,
-    critCount: 0, critDamage: 0, blockCount: 0, blockReduced: 0,
+  // Apply equipment stat bonuses
+  const applyEquip = (us: ArenaUnit[]) => {
+    for (const u of us) {
+      if (!u.equipmentId) continue;
+      const eq = EQUIPMENT_MAP.get(u.equipmentId);
+      if (!eq || !eq.stats) continue;
+      const s = eq.stats;
+      if (s.attackPercent)
+        u.currentAttack = Math.floor(
+          u.currentAttack * (1 + s.attackPercent / 100)
+        );
+      if (s.physicalDefPercent)
+        u.currentPhysicalDef = Math.floor(
+          u.currentPhysicalDef * (1 + s.physicalDefPercent / 100)
+        );
+      if (s.magicalDefPercent)
+        u.currentMagicalDef = Math.floor(
+          u.currentMagicalDef * (1 + s.magicalDefPercent / 100)
+        );
+      if (s.hpPercent) {
+        const mult = 1 + s.hpPercent / 100;
+        u.maxHp = Math.floor(u.maxHp * mult);
+        u.currentHp = Math.floor(u.currentHp * mult);
+      }
+      if (s.critRate) u.critRate = (u.critRate || 0) + s.critRate / 100;
+      if (s.critDamage) u.critDamage = (u.critDamage || 0) + s.critDamage / 100;
+      if (s.hitRate) u.hitRateMod = (u.hitRateMod || 0) + s.hitRate / 100;
+      if (s.lifeSteal) u.lifeSteal = (u.lifeSteal || 0) + s.lifeSteal / 100;
+    }
+  };
+  applyEquip(allies);
+  applyEquip(enemies);
+
+  // 龙之心脏 effect: reduce starting cooldown by 50%
+  for (const u of units) {
+    if (u.equipmentId === "dragon_heart") {
+      u.cooldownRemaining *= 0.5;
+    }
+  }
+
+  const stats: BattleStats[] = units.map((u) => ({
+    unitId: u.id,
+    name: u.def.name,
+    race: u.def.race,
+    team: u.team,
+    totalDamageDealt: 0,
+    totalDamageReceived: 0,
+    totalHealingDone: 0,
+    totalHealingReceived: 0,
+    kills: 0,
+    deaths: 0,
+    skillCasts: 0,
+    autoAttackDamage: 0,
+    skillDamage: 0,
+    critCount: 0,
+    critDamage: 0,
+    blockCount: 0,
+    blockReduced: 0,
   }));
 
-  return {
-    units, time: 0, phase: 'fighting', turnEvents: [],
-    battleLog: [{ time: 0, text: '⚔️ 战斗开始！', type: 'system' }],
+  const state: any = {
+    units,
+    time: 0,
+    phase: "fighting",
+    turnEvents: [],
+    battleLog: [{ time: 0, text: "⚔️ 战斗开始！", type: "system" }],
     stats,
     bonds: {
       ally: calcBonds(allies),
       enemy: calcBonds(enemies),
     },
   };
-
-  function calcBonds(us: ArenaUnit[]): {race:string;count:number}[] {
-    const rc: Record<string,number> = {};
-    for(const u of us.filter(u=>!u.isDead)) {
-      rc[u.def.race] = (rc[u.def.race]||0)+1;
+  // Debug: bond activation logs (done after state creation)
+  if (state._debug) {
+    for (const side of ["ally", "enemy"] as const) {
+      const us = side === "ally" ? allies : enemies;
+      const label = side === "ally" ? "我方" : "敌方";
+      const bonds = getActiveBonds(us);
+      for (const [race, { effect }] of bonds) {
+        const cnt = us.filter((u: any) => u.def.race === race).length;
+        if (race === "warrior")
+          state.battleLog.push({
+            time: 0,
+            text: `🌟 ${label} 战士×${cnt}羁绊: HP+50%`,
+            type: "system",
+          });
+        else if (race === "mage")
+          state.battleLog.push({
+            time: 0,
+            text: `🌟 ${label} 法师×${cnt}羁绊: 魔防-50%+吸血30%`,
+            type: "system",
+          });
+        else if (race === "dragon")
+          state.battleLog.push({
+            time: 0,
+            text: `🌟 ${label} 龙族×${cnt}羁绊: CD-80%+减伤75%7s`,
+            type: "system",
+          });
+        else {
+          if (effect.attackBonus)
+            state.battleLog.push({
+              time: 0,
+              text: `🌟 ${label} ${race}×${cnt}羁绊: 攻+${effect.attackBonus}%`,
+              type: "system",
+            });
+          if (effect.defenseBonus)
+            state.battleLog.push({
+              time: 0,
+              text: `🌟 ${label} ${race}×${cnt}羁绊: 防+${effect.defenseBonus}%`,
+              type: "system",
+            });
+        }
+      }
     }
-    return Object.entries(rc).filter(([_,c])=>c>=3).map(([r,c])=>({race:r,count:c}));
+  }
+  return state;
+
+  function calcBonds(us: ArenaUnit[]): { race: string; count: number }[] {
+    const rc: Record<string, number> = {};
+    for (const u of us.filter((u) => !u.isDead)) {
+      rc[u.def.race] = (rc[u.def.race] || 0) + 1;
+    }
+    return Object.entries(rc)
+      .filter(([_, c]) => c >= 3)
+      .map(([r, c]) => ({ race: r, count: c }));
   }
 }
 
 const MAX_LOG = 2000;
 
+function deferDamage(target: any, dmg: number, state: any) {
+  if (dmg <= 0) return;
+  // Sleep: 20% chance to wake on damage
+  if (
+    target.statuses?.some((s: any) => s.type === StatusType.Sleep) &&
+    Math.random() < 0.2
+  ) {
+    target.statuses = target.statuses.filter(
+      (s: any) => s.type !== StatusType.Sleep
+    );
+    state.battleLog.push({
+      time: state.time,
+      text: `💤 ${target.def.name} 被惊醒！`,
+      type: "status",
+    });
+  }
+  const inspire = target.statuses?.find(
+    (s: any) => s.type === StatusType.Inspire
+  );
+  if (inspire) {
+    target._delayedDamage = target._delayedDamage || [];
+    target._delayedDamage.push({ amount: dmg, expireTime: state.time + 6 });
+  } else {
+    target.currentHp -= dmg;
+  }
+}
+
+function processDelayedDamage(state: any) {
+  for (const u of state.units) {
+    if (!u._delayedDamage || u._delayedDamage.length === 0) continue;
+    const now = state.time;
+    const ready = u._delayedDamage.filter((d: any) => d.expireTime <= now);
+    u._delayedDamage = u._delayedDamage.filter((d: any) => d.expireTime > now);
+    for (const d of ready) {
+      u.currentHp -= d.amount;
+      if (state._debug) {
+        state.battleLog.push({
+          time: now,
+          text: `⏳ ${u.def.name} 延迟伤害生效: -${d.amount}`,
+          type: "damage",
+        });
+      }
+    }
+  }
+}
+
 export function processTick(state: any): any {
-  if (state.phase !== 'fighting') return state;
+  if (state.phase !== "fighting") return state;
   state.time += 0.1;
   updateStatuses(state);
+  processDelayedDamage(state);
   updateCasting(state);
   updateCooldowns(state);
   updateSkills(state);
   updateAutoAttacks(state);
   updateDeaths(state);
   updateRevivals(state);
+  updateWarriorImmunity(state);
   updateVictory(state);
   updateBonds(state);
   trimLog(state);
@@ -194,12 +410,48 @@ function updateStatuses(state: any) {
       s.remainingSeconds -= 0.1;
       if (s.type === StatusType.Burn && s.value) {
         const dmg = s.value; // value already stores per-tick damage (casterAttack × ratio)
-        unit.currentHp -= dmg;
-        addStat(state, unit.id, 'totalDamageReceived', dmg);
-        state.battleLog.push({ time: state.time, text: `🔥 ${unit.def.name} 灼烧 ${dmg}`, type: 'damage' });
+        // Use deferred damage for Inspire
+        deferDamage(unit, dmg, state);
+        addStat(state, unit.id, "totalDamageReceived", dmg);
+        state.battleLog.push({
+          time: state.time,
+          text: `🔥 ${unit.def.name} 灼烧 ${dmg}`,
+          type: "damage",
+        });
       }
     }
-    unit.statuses = unit.statuses.filter(s => s.remainingSeconds > 0);
+    // 亡灵歌咏者天赋：诅咒DoT
+    if (unit.statuses.some((s) => s.type === StatusType.Curse)) {
+      const dmg = Math.floor(unit.currentAttack * 0.01 + 20);
+      unit.currentHp -= dmg;
+      addStat(state, unit.id, "totalDamageReceived", dmg);
+    }
+    // 炽热战士天赋：每秒对同排敌方造成纯粹伤害
+    if (unit.def.id === "crzs") {
+      const sameRowEnemies = getEnemies(state, unit.team).filter(
+        (e: any) => e.row === unit.row
+      );
+      for (const e of sameRowEnemies) {
+        const dmg = Math.floor(unit.currentAttack * 0.015 + 2);
+        e.currentHp -= dmg;
+        addStat(state, unit.id, "totalDamageDealt", dmg);
+      }
+    }
+    unit.statuses = unit.statuses.filter((s) => s.remainingSeconds > 0);
+  }
+  // 神谕者阵亡触发
+  const syzT = state._syzDeathTime;
+  if (syzT !== undefined) {
+    const el = state.time - syzT;
+    if (el >= 0 && el < 5) {
+      const baseAtk = state._syzDeathAttack || 0;
+      const atk80 = baseAtk > 0 ? Math.floor(baseAtk * 0.8) : 482;
+      const heal = Math.floor(atk80 * (1 + el * 0.1));
+      for (const u of state.units) {
+        if (u.team === "ally" && !u.isDead && u.def.race === "mage")
+          u.currentHp = Math.min(u.maxHp, u.currentHp + heal);
+      }
+    }
   }
 }
 
@@ -207,7 +459,43 @@ function updateCasting(state: any) {
   for (const unit of getAlive(state)) {
     if (!unit.isCasting) continue;
     unit.castTimer -= 0.1;
+    // Check interrupt conditions
+    const sk = unit.def.skill;
+    let interrupted = false;
+    let reason = "";
+    // 1. CC interrupt
+    const cc = unit.statuses.find((s: any) =>
+      ["stun", "sleep", "petrify", "freeze", "silence"].includes(s.type)
+    );
+    if (cc) {
+      interrupted = true;
+      reason = cc.type;
+    }
+    // 2. Attack interrupt
+    if (!interrupted && sk.interruptOnAttack && unit._wasHitDuringCast) {
+      interrupted = true;
+      reason = "受击";
+    }
+    // 3. Damage interrupt
+    if (!interrupted && sk.interruptOnDamage && unit._wasDamagedDuringCast) {
+      interrupted = true;
+      reason = "受伤";
+    }
+    if (interrupted) {
+      unit.isCasting = false;
+      unit.cooldownRemaining = unit.def.skill.cooldown;
+      unit._wasHitDuringCast = false;
+      unit._wasDamagedDuringCast = false;
+      state.battleLog.push({
+        time: state.time,
+        text: `⛔ ${unit.def.name} 施法被打断(${reason})！`,
+        type: "status",
+      });
+      continue;
+    }
     if (unit.castTimer <= 0) {
+      unit._wasHitDuringCast = false;
+      unit._wasDamagedDuringCast = false;
       executeSkill(unit, state, state.battleLog);
       unit.isCasting = false;
       unit.cooldownRemaining = unit.def.skill.cooldown;
@@ -225,11 +513,20 @@ function updateSkills(state: any) {
   for (const unit of getAlive(state)) {
     if (unit.isCasting) continue;
     if (unit.cooldownRemaining > 0) continue;
-    const cannotCast = [StatusType.Stun,StatusType.Sleep,StatusType.Petrify,StatusType.Freeze,StatusType.Silence]
-      .some(t => unit.statuses.some((s:any) => s.type === t));
-    const isBound = unit.statuses.some((s:any) => s.type === StatusType.Bind);
+    const cannotCast = [
+      StatusType.Stun,
+      StatusType.Sleep,
+      StatusType.Petrify,
+      StatusType.Freeze,
+      StatusType.Silence,
+    ].some((t) => unit.statuses.some((s: any) => s.type === t));
+    const isBound = unit.statuses.some((s: any) => s.type === StatusType.Bind);
     if (cannotCast) continue;
-    if (isBound && unit.def.skill.tags?.some((t:string) => t === '切入' || t === '移动')) continue;
+    if (
+      isBound &&
+      unit.def.skill.tags?.some((t: string) => t === "切入" || t === "移动")
+    )
+      continue;
     const sk = unit.def.skill;
     if (sk.castTime > 0) {
       unit.isCasting = true;
@@ -243,35 +540,99 @@ function updateSkills(state: any) {
 
 function updateAutoAttacks(state: any) {
   for (const unit of getAlive(state)) {
-    const cannotAttack = [StatusType.Stun,StatusType.Sleep,StatusType.Petrify,StatusType.Freeze,StatusType.Disarm]
-      .some(t => unit.statuses.some((s:any) => s.type === t));
+    const cannotAttack = [
+      StatusType.Stun,
+      StatusType.Sleep,
+      StatusType.Petrify,
+      StatusType.Freeze,
+      StatusType.Disarm,
+    ].some((t) => unit.statuses.some((s: any) => s.type === t));
     if (cannotAttack) continue;
     unit.attackTimer -= 0.1;
     if (unit.attackTimer <= 0) {
-      const target = pickTarget(getEnemies(state, unit.team));
-      if (target) {
-        const result = calcDamage(unit, target, 1, DamageType.Physical, { evasion: target.evasion, hitRateMod: unit.hitRateMod });
+      const enemies = getEnemies(state, unit.team);
+      const nTargets = unit.def.id === "mds" ? 2 : 1;
+      const targets =
+        nTargets === 1
+          ? [pickTarget(enemies)].filter(Boolean)
+          : shuffle(enemies).slice(0, nTargets);
+      for (const target of targets) {
+        if (!target || target.isDead) continue;
+        let atkRatio = 1;
+        if (unit.def.id === "mds") atkRatio = 0.85; // -15% attack per target
+        const result = calcDamage(unit, target, atkRatio, DamageType.Physical, {
+          evasion: target.evasion,
+          hitRateMod: unit.hitRateMod,
+        });
         const fs = applyFatalStrike(unit, result.finalDamage, false);
         if (fs.triggered) result.isCrit = true;
         result.finalDamage = fs.damage;
-        target.currentHp -= result.finalDamage;
+        deferDamage(target, result.finalDamage, state);
+        // Set interrupt flags on target
+        target._wasHitDuringCast = true;
+        target._wasDamagedDuringCast = true;
         // Track crit/block stats
-        if (result.isCrit) { addStat(state, unit.id, 'critCount', 1); addStat(state, unit.id, 'critDamage', result.finalDamage); }
-        if (result.isBlocked) { addStat(state, target.id, 'blockCount', 1); addStat(state, target.id, 'blockReduced', result.blocked); }
-        target.lastDamage = { value: result.finalDamage, time: state.time, type: 'physical' };
+        if (result.isCrit) {
+          addStat(state, unit.id, "critCount", 1);
+          addStat(state, unit.id, "critDamage", result.finalDamage);
+        }
+        if (result.isBlocked) {
+          addStat(state, target.id, "blockCount", 1);
+          addStat(state, target.id, "blockReduced", result.blocked);
+        }
+        target.lastDamage = {
+          value: result.finalDamage,
+          time: state.time,
+          type: "physical",
+        };
         target.lastAction = { time: state.time, isTarget: true };
-        unit.lastAction = { time: state.time, targetName: target.def.name, isTarget: false };
+        unit.lastAction = {
+          time: state.time,
+          targetName: target.def.name,
+          isTarget: false,
+        };
         target.lastHitBy = unit.id;
-        addStat(state, unit.id, 'totalDamageDealt', result.finalDamage);
-        addStat(state, unit.id, 'autoAttackDamage', result.finalDamage);
-        addStat(state, target.id, 'totalDamageReceived', result.finalDamage);
+        addStat(state, unit.id, "totalDamageDealt", result.finalDamage);
+        addStat(state, unit.id, "autoAttackDamage", result.finalDamage);
+        addStat(state, target.id, "totalDamageReceived", result.finalDamage);
         if (result.finalDamage > 0) {
           unit.lastHitTarget = target.id;
           target.lastHitBy = unit.id;
-          state.battleLog.push({ time: state.time, text: `${pfx(unit)} ⚔️ ${pfx(target)}: ${result.finalDamage}${result.isCrit ? '💥' : ''}`, type: 'damage' });
+          state.battleLog.push({
+            time: state.time,
+            text: `${pfx(unit)} ⚔️ ${pfx(target)}: ${result.finalDamage}${result.isCrit ? "💥" : ""}${state._debug ? ` raw=${result.rawDamage.toFixed(0)} def=${Math.floor(target.currentPhysicalDef)} dr=${((1 - result.afterDef / result.rawDamage) * 100).toFixed(0)}% front=${result.afterFrontRow.toFixed(0)} other=${result.afterOtherReduction.toFixed(0)} block=${result.blocked}${result.isCrit ? " crit*1.35=" + (result.finalDamage / 1.35).toFixed(0) : ""}` : ""}`,
+            type: "damage",
+          });
+          // Beast bond: 20% lifesteal on targets below 50% HP
+          if (unit.def.race === "beast") {
+            const beastCnt = state.units.filter(
+              (u: any) =>
+                u.team === unit.team && !u.isDead && u.def.race === "beast"
+            ).length;
+            if (beastCnt >= 3 && target.currentHp / target.maxHp < 0.5) {
+              const heal = Math.floor(result.finalDamage * 0.2);
+              unit.currentHp = Math.min(unit.maxHp, unit.currentHp + heal);
+              addStat(state, unit.id, "totalHealingDone", heal);
+            }
+          }
+          // 神谕者天赋：攻击治疗
+          if (unit.def.id === "syz" && result.finalDamage > 0) {
+            const allies = state.units
+              .filter((u: any) => u.team === unit.team && !u.isDead)
+              .sort(
+                (a: any, b: any) =>
+                  a.currentHp / a.maxHp - b.currentHp / b.maxHp
+              );
+            if (allies.length > 0 && Math.random() < 0.8) {
+              const t = allies[0];
+              const heal = Math.floor(unit.currentAttack * 0.4);
+              t.currentHp = Math.min(t.maxHp, t.currentHp + heal);
+              addStat(state, unit.id, "totalHealingDone", heal);
+            }
+          }
         }
       }
-      unit.attackTimer = unit.def.stats.attackInterval * 1.5;
+      unit.attackTimer = unit.def.stats.attackInterval;
     }
   }
 }
@@ -280,17 +641,50 @@ function updateDeaths(state: any) {
   for (const u of state.units) {
     if (u.currentHp > 0 || u.isDead) continue;
     u.isDead = true;
-    addStat(state, u.id, 'deaths', 1);
+    addStat(state, u.id, "deaths", 1);
+    // 神谕者阵亡触发：治疗全场法师5s
+    if (u.def.id === "syz") {
+      state._syzDeathTime = state.time;
+      state._syzDeathAttack = u.currentAttack;
+      state.battleLog.push({
+        time: state.time,
+        text: `🛡 ${u.def.name} 阵亡触发：全法师治疗5s`,
+        type: "status",
+      });
+    }
     // Credit kill to last attacker
-    if (u.lastHitBy) addStat(state, u.lastHitBy, 'kills', 1);
-    state.battleLog.push({ time: state.time, text: `💀 ${pfx(u)} 阵亡！`, type: 'death' });
-    if (u.def.race === 'undead' && !u.hasRevived) {
-      const alive = state.units.filter((x:any) => x.team === u.team && !x.isDead);
-      const totalU = state.units.filter((x:any) => x.team === u.team && x.def.race === 'undead').length;
+    if (u.lastHitBy) addStat(state, u.lastHitBy, "kills", 1);
+    state.battleLog.push({
+      time: state.time,
+      text: `💀 ${pfx(u)} 阵亡！`,
+      type: "death",
+    });
+    if (u.def.race === "undead" && !u.hasRevived) {
+      // Check if revive already used for this team
+      const key = `undeadRevive_${u.team}`;
+      if (state[key]) return;
+      const alive = state.units.filter(
+        (x: any) => x.team === u.team && !x.isDead
+      );
+      const totalU = state.units.filter(
+        (x: any) => x.team === u.team && x.def.race === "undead"
+      ).length;
       if (totalU >= 3) {
-        for (const m of alive) { if (m.def.race === 'undead') m.currentHp = Math.max(1, Math.floor(m.currentHp * 0.95)); }
-        u.reviving = { timer: 7, hpPct: 0.35 };
-        state.battleLog.push({ time: state.time, text: `💀 ${u.def.name} ${totalU >= 4 ? '4' : '3'}羁绊激活，7s后复活！`, type: 'status' });
+        state[key] = true;
+        const is4 = totalU >= 4;
+        const deductPct = is4 ? 0.9 : 0.75; // 扣除10%或25%
+        const reviveTime = is4 ? 7 : 13;
+        const reviveHp = is4 ? 0.35 : 0.15;
+        for (const m of alive) {
+          if (m.def.race === "undead")
+            m.currentHp = Math.max(1, Math.floor(m.currentHp * deductPct));
+        }
+        u.reviving = { timer: reviveTime, hpPct: reviveHp };
+        state.battleLog.push({
+          time: state.time,
+          text: `💀 ${u.def.name} ${totalU}羁绊激活，${reviveTime}s后复活(扣除${is4 ? 10 : 25}%HP)！`,
+          type: "status",
+        });
       }
     }
   }
@@ -311,7 +705,11 @@ function updateRevivals(state: any) {
         u.reviving = undefined;
         u.invincibleTimer = 1;
         u.hasRevived = true;
-        state.battleLog.push({ time: state.time, text: `🔄 ${u.def.name} 复活！恢复${Math.floor(pct*100)}%HP`, type: 'status' });
+        state.battleLog.push({
+          time: state.time,
+          text: `🔄 ${u.def.name} 复活！恢复${Math.floor(pct * 100)}%HP`,
+          type: "status",
+        });
       }
     }
     // Temporary revival countdown (龙吟者)
@@ -320,7 +718,11 @@ function updateRevivals(state: any) {
       if (u.tempReviveTimer <= 0 && !u.isDead) {
         u.isDead = true;
         u.tempReviveTimer = undefined;
-        state.battleLog.push({ time: state.time, text: `⏳ ${u.def.name} 临时复活结束`, type: 'status' });
+        state.battleLog.push({
+          time: state.time,
+          text: `⏳ ${u.def.name} 临时复活结束`,
+          type: "status",
+        });
       }
     }
     if (u.invincibleTimer && u.invincibleTimer > 0) {
@@ -330,24 +732,93 @@ function updateRevivals(state: any) {
   }
 }
 
+function updateWarriorImmunity(state: any) {
+  state._warriorTimer = (state._warriorTimer || 0) + 0.1;
+  if (state._warriorTimer >= 10) {
+    state._warriorTimer = 0;
+    // Apply immunity to all alive warriors on both teams
+    for (const u of getAlive(state)) {
+      const wCnt = state.units.filter(
+        (x: any) => x.team === u.team && !x.isDead && x.def.race === "warrior"
+      ).length;
+      if (u.def.race === "warrior" && wCnt >= 3) {
+        u._immuneAbnormal = true;
+        u._immuneTimer = 5;
+      }
+    }
+    state.battleLog.push({
+      time: state.time,
+      text: `🛡 战士免疫异常 5s`,
+      type: "status",
+    });
+  }
+  // Tick down immunity
+  for (const u of state.units) {
+    if (u._immuneTimer > 0) {
+      u._immuneTimer -= 0.1;
+      if (u._immuneTimer <= 0) {
+        u._immuneAbnormal = false;
+        u._immuneTimer = 0;
+      }
+    }
+  }
+}
+
 function updateVictory(state: any) {
-  const a = getAlive(state).filter((u:any) => u.team === 'ally');
-  const e = getAlive(state).filter((u:any) => u.team === 'enemy');
+  const a = getAlive(state).filter((u: any) => u.team === "ally");
+  const e = getAlive(state).filter((u: any) => u.team === "enemy");
   if (a.length === 0 || e.length === 0) {
-    state.phase = 'finished';
-    state.winner = a.length > 0 ? 'ally' : 'enemy';
-    state.battleLog.push({ time: state.time, text: `🏁 ${state.winner === 'ally' ? '我方' : '敌方'}胜利！`, type: 'system' });
+    state.phase = "finished";
+    state.winner = a.length > 0 ? "ally" : "enemy";
+    state.battleLog.push({
+      time: state.time,
+      text: `🏁 ${state.winner === "ally" ? "我方" : "敌方"}胜利！`,
+      type: "system",
+    });
+    // 终局统计
+    state.battleLog.push({
+      time: state.time,
+      text: `── 终局统计 ──`,
+      type: "system",
+    });
+    for (const s of state.stats || []) {
+      const u = state.units.find((x: any) => x.id === s.unitId);
+      if (!u) continue;
+      const side = u.team === "ally" ? "🟦" : "🟥";
+      state.battleLog.push({
+        time: state.time,
+        text: `${side} ${u.def.name}: 伤害${s.totalDamageDealt || 0} 治疗${s.totalHealingDone || 0} 击杀${s.kills || 0} 暴击${s.critCount || 0} 格挡${s.blockCount || 0}`,
+        type: "system",
+      });
+    }
   }
 }
 
 function updateBonds(state: any) {
   const calc = (team: string) => {
-    const rc: Record<string,number> = {};
-    for (const u of state.units.filter((x:any) => x.team === team && !x.isDead))
-      rc[u.def.race] = (rc[u.def.race]||0) + 1;
-    return Object.entries(rc).filter(([_,c]) => c >= 3).map(([r,c]) => ({race:r,count:c}));
+    const rc: Record<string, number> = {};
+    for (const u of state.units.filter(
+      (x: any) => x.team === team && !x.isDead
+    ))
+      rc[u.def.race] = (rc[u.def.race] || 0) + 1;
+    return Object.entries(rc)
+      .filter(([_, c]) => c >= 3)
+      .map(([r, c]) => ({ race: r, count: c }));
   };
-  state.bonds = { ally: calc('ally'), enemy: calc('enemy') };
+  state.bonds = { ally: calc("ally"), enemy: calc("enemy") };
+  // 森之射手：同排猎人+25%闪避
+  for (const u of getAlive(state)) {
+    if (u.def.id !== "sszs") continue;
+    for (const h of state.units.filter(
+      (x: any) =>
+        x.team === u.team &&
+        !x.isDead &&
+        x.def.race === "hunter" &&
+        x.row === u.row
+    )) {
+      if (h.id !== "sszs") h.evasion = Math.max(h.evasion || 0, 0.25);
+    }
+  }
 }
 
 function trimLog(state: any) {
@@ -355,7 +826,6 @@ function trimLog(state: any) {
     state.battleLog = state.battleLog.slice(-MAX_LOG);
   }
 }
-
 
 // Assign IDs to any log entries that don't have them
 function ensureLogIds(state: any) {
@@ -365,20 +835,41 @@ function ensureLogIds(state: any) {
 }
 
 function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
-  addStat(state, caster.id, 'skillCasts', 1);
+  addStat(state, caster.id, "skillCasts", 1);
   const sk = caster.def.skill;
   const enemies = getEnemies(state, caster.team);
   const allies = getAlive(state, caster.team);
 
-  log.push({ time: state.time, text: `${caster.def.name} 释放【${sk.name}】`, type: 'skill' });
+  log.push({
+    time: state.time,
+    text: `${caster.def.name} 释放【${sk.name}】`,
+    type: "skill",
+  });
   caster.lastSkillCast = { name: sk.name, time: state.time };
 
+  // 秀逗大师天赋：同排友方每次技能提升自身6%攻速，5层上限
+  for (const xdds of state.units.filter(
+    (u: any) =>
+      !u.isDead &&
+      u.team === caster.team &&
+      u.def.id === "xdds" &&
+      u.row === caster.row
+  )) {
+    if (xdds.id === caster.id) continue;
+    const stacks = Math.min((xdds._asStack || 0) + 1, 5);
+    xdds._asStack = stacks;
+    // Each stack = 6% attack speed boost = 3% attack interval reduction
+    const atkIntMult = 1 - stacks * 0.03;
+    const baseInt = xdds.def.stats.attackInterval;
+    xdds.attackTimer = Math.min(xdds.attackTimer, baseInt * atkIntMult);
+  }
+
   // Script-driven skill: delegate to SkillRegistry
-  const handler = getSkillHandler(sk.scriptId || '');
+  const handler = getSkillHandler(sk.scriptId || "");
   if (handler) {
     const scriptTargets = sk.aoe
       ? shuffle(enemies).slice(0, sk.aoe.maxTargets || enemies.length)
-      : [pickTarget(enemies, sk.priority)].filter(Boolean) as ArenaUnit[];
+      : ([pickTarget(enemies, sk.priority)].filter(Boolean) as ArenaUnit[]);
     handler(caster, state, log, scriptTargets);
     return;
   }
@@ -386,12 +877,15 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
   let actionTargets: string[] = [];
 
   // --- Hunter counter-attack (if skill has #切入 tag) ---
-  const isCutIn = sk.tags?.includes('切入');
+  const isCutIn = sk.tags?.includes("切入");
   if (isCutIn && enemies.length > 0) {
     // Determine initial targets
     let cutTargets: ArenaUnit[] = [];
     if (sk.aoe) {
-      cutTargets = shuffle(enemies).slice(0, sk.aoe.maxTargets || enemies.length);
+      cutTargets = shuffle(enemies).slice(
+        0,
+        sk.aoe.maxTargets || enemies.length
+      );
     } else {
       const t = pickTarget(enemies, sk.priority);
       if (t) cutTargets = [t];
@@ -399,18 +893,32 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
     // Check each target's team for hunter bond
     for (const t of cutTargets) {
       if (t.isDead) continue;
-      const targetTeam = state.units.filter((u:any) => u.team === t.team && !u.isDead);
-      const hunterCount = targetTeam.filter((u:any) => u.def.race === 'hunter').length;
+      const targetTeam = state.units.filter(
+        (u: any) => u.team === t.team && !u.isDead
+      );
+      const hunterCount = targetTeam.filter(
+        (u: any) => u.def.race === "hunter"
+      ).length;
       if (hunterCount >= 3) {
-        // Counter-attack: 100% physical damage, ignores defense
-        // Use calcDamage for counter (respects defense, block, crit)
-        const counterResult = calcDamage(t, caster, 1, DamageType.Physical, { isSkill: true });
+        // Counter-attack: 100% physical, ignores defense but can be blocked
+        const counterResult = calcDamage(t, caster, 1, DamageType.Physical, {
+          isSkill: true,
+          ignoreBaseDef: true,
+        });
         const counterDmg = counterResult.finalDamage;
-        caster.currentHp -= counterDmg;
-        caster.lastDamage = { value: counterDmg, time: state.time, type: 'physical' };
+        deferDamage(caster, counterDmg, state);
+        caster.lastDamage = {
+          value: counterDmg,
+          time: state.time,
+          type: "physical",
+        };
         caster.lastAction = { time: state.time, isTarget: true };
-        log.push({ time: state.time, text: `🔄 ${t.def.name} 反击 ${pfx(caster)}: ${counterDmg}${counterResult.isCrit ? '💥' : ''}`, type: 'damage' });
-        addStat(state, t.id, 'totalDamageDealt', counterDmg);
+        log.push({
+          time: state.time,
+          text: `🔄 ${t.def.name} 反击 ${pfx(caster)}: ${counterDmg}${counterResult.isCrit ? "💥" : ""}`,
+          type: "damage",
+        });
+        addStat(state, t.id, "totalDamageDealt", counterDmg);
       }
     }
   }
@@ -431,34 +939,97 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         if (t.isDead) continue;
         actionTargets.push(t.def.name);
         // Mage bond: -50% magic defense
-        const mageCnt = state.units.filter((u:any) => u.team===caster.team && !u.isDead && u.def.race==='mage').length;
+        const mageCnt = state.units.filter(
+          (u: any) =>
+            u.team === caster.team && !u.isDead && u.def.race === "mage"
+        ).length;
         const origMdef = t.currentMagicalDef;
-        if (mageCnt >= 3 && dmgFormula.type === 'magical') t.currentMagicalDef = Math.floor(t.currentMagicalDef * 0.5);
-        const result = calcDamage(caster, t, dmgFormula.atkRatio ?? 1, dmgFormula.type, {
-          fixedAdd: dmgFormula.fixedAdd,
-          defMultiplier: dmgFormula.defMultiplier,
-          defSquaredDiv: dmgFormula.defSquaredDiv,
-          selfDefMultiplier: dmgFormula.selfDefMultiplier,
-          targetMaxHpRatio: dmgFormula.targetMaxHpRatio,
-          isSkill: true,
-          evasion: t.evasion,
-          hitRateMod: caster.hitRateMod,
-        });
+        if (mageCnt >= 3 && dmgFormula.type === "magical")
+          t.currentMagicalDef = Math.floor(t.currentMagicalDef * 0.5);
+        const result = calcDamage(
+          caster,
+          t,
+          (dmgFormula.atkRatio ?? 1) * (caster.skillPower || 1),
+          dmgFormula.type,
+          {
+            fixedAdd: dmgFormula.fixedAdd,
+            defMultiplier: dmgFormula.defMultiplier,
+            defSquaredDiv: dmgFormula.defSquaredDiv,
+            selfDefMultiplier: dmgFormula.selfDefMultiplier,
+            targetMaxHpRatio: dmgFormula.targetMaxHpRatio,
+            isSkill: true,
+            evasion: t.evasion,
+            hitRateMod: caster.hitRateMod,
+          }
+        );
         const fs = applyFatalStrike(caster, result.finalDamage, true);
         if (fs.triggered) result.isCrit = true;
         result.finalDamage = fs.damage;
-        t.currentHp -= result.finalDamage;
-        if (mageCnt >= 3 && dmgFormula.type === 'magical') t.currentMagicalDef = origMdef;
-        t.lastDamage = { value: result.finalDamage, time: state.time, type: dmgFormula.type };
+        // 地狱之犬命中3人伤害-30%
+        if (
+          caster.def.id === "dyq" &&
+          sk.aoe &&
+          targets.filter((x: any) => !x.isDead).length >= 3
+        ) {
+          result.finalDamage = Math.floor(result.finalDamage * 0.7);
+        }
+        deferDamage(t, result.finalDamage, state);
+        t._wasHitDuringCast = true;
+        t._wasDamagedDuringCast = true;
+        if (mageCnt >= 3 && dmgFormula.type === "magical")
+          t.currentMagicalDef = origMdef;
+        t.lastDamage = {
+          value: result.finalDamage,
+          time: state.time,
+          type: dmgFormula.type,
+        };
         t.lastAction = { time: state.time, isTarget: true };
-        addStat(state, caster.id, 'totalDamageDealt', result.finalDamage);
-        addStat(state, caster.id, 'skillDamage', result.finalDamage);
-        addStat(state, t.id, 'totalDamageReceived', result.finalDamage);
-        if (result.isCrit) { addStat(state, caster.id, 'critCount', 1); addStat(state, caster.id, 'critDamage', result.finalDamage); }
-        if (result.isBlocked) { addStat(state, t.id, 'blockCount', 1); addStat(state, t.id, 'blockReduced', result.blocked); }
+        addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
+        addStat(state, caster.id, "skillDamage", result.finalDamage);
+        addStat(state, t.id, "totalDamageReceived", result.finalDamage);
+        if (result.isCrit) {
+          addStat(state, caster.id, "critCount", 1);
+          addStat(state, caster.id, "critDamage", result.finalDamage);
+        }
+        if (result.isBlocked) {
+          addStat(state, t.id, "blockCount", 1);
+          addStat(state, t.id, "blockReduced", result.blocked);
+        }
         t.lastHitBy = caster.id;
         if (result.finalDamage > 0) {
-          log.push({ time: state.time, text: `${pfx(caster)} → ${pfx(t)}: ${result.finalDamage}${result.isCrit ? '💥' : ''}`, type: 'damage' });
+          log.push({
+            time: state.time,
+            text: `${pfx(caster)} → ${pfx(t)}: ${result.finalDamage}${result.isCrit ? "💥" : ""}${state._debug ? ` raw=${result.rawDamage.toFixed(0)} type=${dmgFormula.type} def=${dmgFormula.type === "magical" ? Math.floor(t.currentMagicalDef) : Math.floor(t.currentPhysicalDef)} dr=${((1 - result.afterDef / result.rawDamage) * 100).toFixed(0)}% front=${result.afterFrontRow.toFixed(0)} other=${result.afterOtherReduction.toFixed(0)} block=${result.blocked}${result.isCrit ? " crit*1.35=" + (result.finalDamage / (result.isCrit ? 1.35 : 1)).toFixed(0) : ""}` : ""}`,
+            type: "damage",
+          });
+          // Mage bond: 30% skill life steal (v1.7)
+          if (mageCnt >= 3 && result.finalDamage > 0) {
+            const lsHeal = Math.floor(result.finalDamage * 0.3);
+            caster.currentHp = Math.min(
+              caster.maxHp,
+              caster.currentHp + lsHeal
+            );
+            log.push({
+              time: state.time,
+              text: `💉 ${pfx(caster)} 技能吸血 +${lsHeal}`,
+              type: "heal",
+            });
+          }
+          // 小精灵链接 lifeSteal
+          if ((caster.lifeSteal ?? 0) > 0 && result.finalDamage > 0) {
+            const lsHeal = Math.floor(
+              result.finalDamage * (caster.lifeSteal ?? 0)
+            );
+            caster.currentHp = Math.min(
+              caster.maxHp,
+              caster.currentHp + lsHeal
+            );
+            log.push({
+              time: state.time,
+              text: `🔗 ${pfx(caster)} 链接吸血 +${lsHeal}`,
+              type: "heal",
+            });
+          }
         }
       }
     }
@@ -467,20 +1038,30 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
   // --- Heal ---
   if (sk.heal) {
     let targets: ArenaUnit[] = [];
-    if (sk.id === 'dxm_heal') {
+    if (sk.id === "dxm_heal") {
       // Prefer beast, then lowest HP
-      const beast = allies.filter(a => a.def.race === 'beast').sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
-      const all = allies.sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
+      const beast = allies
+        .filter((a) => a.def.race === "beast")
+        .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
+      const all = allies.sort(
+        (a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp
+      );
       targets = [beast[0] || all[0]];
-    } else if (sk.id === 'lxgz_heal') {
-      targets = allies.sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp).slice(0, 2);
-    } else if (sk.id === 'wlgyz_heal') {
+    } else if (sk.id === "lxgz_heal") {
+      targets = allies
+        .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp)
+        .slice(0, 2);
+    } else if (sk.id === "wlgyz_heal") {
       targets = shuffle(allies).slice(0, 2);
-    } else if (sk.id === 'hbfl_heal') {
-      const candidates = allies.filter(a => a.def.race === 'dragon' && a.currentHp / a.maxHp < 0.3);
+    } else if (sk.id === "hbfl_heal") {
+      const candidates = allies.filter(
+        (a) => a.def.race === "dragon" && a.currentHp / a.maxHp < 0.3
+      );
       targets = candidates.length > 0 ? [candidates[0]] : [];
     } else {
-      targets = allies.sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp).slice(0, 1);
+      targets = allies
+        .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp)
+        .slice(0, 1);
     }
 
     for (const t of targets) {
@@ -494,14 +1075,21 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
       t.currentHp = Math.min(t.maxHp, t.currentHp + amount);
       t.lastHeal = { value: amount, time: state.time };
       t.lastAction = { time: state.time, isTarget: true };
-      addStat(state, caster.id, 'totalHealingDone', amount);
-      addStat(state, t.id, 'totalHealingReceived', amount);
-      log.push({ time: state.time, text: `${pfx(caster)} 💚 ${pfx(t)}: +${amount}`, type: 'heal' });
+      addStat(state, caster.id, "totalHealingDone", amount);
+      addStat(state, t.id, "totalHealingReceived", amount);
+      log.push({
+        time: state.time,
+        text: `${pfx(caster)} 💚 ${pfx(t)}: +${amount}${state._debug ? ` (atk=${Math.floor(caster.currentAttack)} × ${sk.heal.atkRatio ?? 1})` : ""}`,
+        type: "heal",
+      });
     }
   }
 
   if (actionTargets.length > 0) {
-    caster.lastAction = { time: state.time, targetName: [...new Set(actionTargets)].join(',') };
+    caster.lastAction = {
+      time: state.time,
+      targetName: [...new Set(actionTargets)].join(","),
+    };
   }
 
   // --- Status effects ---
@@ -512,9 +1100,50 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
     for (const t of targets) {
       if (!t || t.isDead) continue;
       for (const eff of sk.effects) {
+        // Respect chance if specified
+        if (eff.chance !== undefined && Math.random() > eff.chance) continue;
+        // Warrior immunity: skip negative statuses
+        const negative = [
+          "stun",
+          "sleep",
+          "petrify",
+          "freeze",
+          "bind",
+          "burn",
+          "armorBreak",
+          "disarm",
+          "curse",
+          "ruin",
+          "silence",
+          "doom",
+        ];
+        if (negative.includes(eff.type) && t._immuneAbnormal) continue;
         // For burn, calculate per-tick damage immediately using caster's attack
-        const val = eff.type === 'burn' ? Math.floor(caster.currentAttack * (eff.value || 0.05)) : eff.value;
-        t.statuses.push({ type: eff.type, remainingSeconds: eff.duration, stacks: 1, value: val });
+        const val =
+          eff.type === "burn"
+            ? Math.floor(caster.currentAttack * (eff.value || 0.05))
+            : eff.value;
+        t.statuses.push({
+          type: eff.type,
+          remainingSeconds: eff.duration,
+          stacks: 1,
+          value: val,
+        });
+        // 水晶室女天赋：友方法师施加异常→自身技能冷却-1.5s
+        if (caster.def.race === "mage") {
+          for (const u of state.units.filter(
+            (x: any) =>
+              x.team === caster.team && !x.isDead && x.def.id === "sjsn"
+          )) {
+            u.cooldownRemaining = Math.max(0, u.cooldownRemaining - 1.5);
+          }
+        }
+        // 白马行者天赋：友方全场法师施加异常→自身技能冷却-1.5s
+        for (const u of state.units.filter(
+          (x: any) => x.team === caster.team && !x.isDead && x.def.id === "bmxz"
+        )) {
+          u.cooldownRemaining = Math.max(0, u.cooldownRemaining - 1.5);
+        }
       }
     }
   }
@@ -522,14 +1151,14 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
 
 function addStat(state: any, unitId: string, field: string, value: number) {
   const s = state.stats?.find((st: any) => st.unitId === unitId);
-  if (s && typeof s[field] === 'number') s[field] += value;
+  if (s && typeof s[field] === "number") s[field] += value;
 }
 
 export function generateEnemyTeam(): { charId: string; row: Row }[] {
   const pool = [...CHARACTER_MAP.values()];
   const shuffled = pool.sort(() => Math.random() - 0.5);
   const selected = shuffled.slice(0, Math.floor(Math.random() * 3) + 6); // 6-8 units
-  return selected.map(c => ({
+  return selected.map((c) => ({
     charId: c.id,
     row: Math.floor(Math.random() * 3) as Row,
   }));
