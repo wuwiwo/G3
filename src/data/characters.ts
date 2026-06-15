@@ -911,6 +911,7 @@ const bsxl: CharacterDef = {
     description: "后排全部：降20%攻速+每秒攻击×80%魔法3s；每3次→冰冻",
     damage: [{ type: DamageType.Magical, atkRatio: 0.8 }],
     aoe: { maxTargets: 3 },
+    scriptId: "bsxl_freeze",
   },
 };
 

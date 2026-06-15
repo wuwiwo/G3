@@ -50,6 +50,11 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+/** Check if a unit's talents are suppressed by Ruin */
+function isRuined(u: any): boolean {
+  return u.statuses?.some((s: any) => s.type === "ruin");
+}
+
 function lvScale(base: number, growth: number, level: number) {
   return base + growth * (level - 1);
 }
@@ -449,7 +454,7 @@ function updateStatuses(state: any) {
       addStat(state, unit.id, "totalDamageReceived", dmg);
     }
     // 炽热战士天赋：每秒对同排敌方造成纯粹伤害
-    if (unit.def.id === "crzs") {
+    if (unit.def.id === "crzs" && !isRuined(unit)) {
       const sameRowEnemies = getEnemies(state, unit.team).filter(
         (e: any) => e.row === unit.row
       );
@@ -579,7 +584,7 @@ function updateAutoAttacks(state: any) {
     unit.attackTimer -= 0.1;
     if (unit.attackTimer <= 0) {
       const enemies = getEnemies(state, unit.team);
-      const nTargets = unit.def.id === "mds" ? 2 : 1;
+      const nTargets = unit.def.id === "mds" && !isRuined(unit) ? 2 : 1;
       const targets =
         nTargets === 1
           ? [pickTarget(enemies)].filter(Boolean)
@@ -654,7 +659,11 @@ function updateAutoAttacks(state: any) {
             }
           }
           // 神谕者天赋：攻击治疗
-          if (unit.def.id === "syz" && result.finalDamage > 0) {
+          if (
+            unit.def.id === "syz" &&
+            result.finalDamage > 0 &&
+            !isRuined(unit)
+          ) {
             const allies = state.units
               .filter((u: any) => u.team === unit.team && !u.isDead)
               .sort(
@@ -683,7 +692,7 @@ function updateDeaths(state: any) {
     addStat(state, u.id, "deaths", 1);
     addStat(state, u.id, "survivalTime", state.time);
     // 神谕者阵亡触发：治疗全场法师5s
-    if (u.def.id === "syz") {
+    if (u.def.id === "syz" && !isRuined(u)) {
       state._syzDeathTime = state.time;
       state._syzDeathAttack = u.currentAttack;
       state.battleLog.push({
@@ -699,6 +708,28 @@ function updateDeaths(state: any) {
       text: `💀 ${pfx(u)} 阵亡！`,
       type: "death",
     });
+    // 暗影噬龙击杀奖励：如果目标有暗影标记，回血20%+全龙CD-20%
+    if (u._markExpire && u._markExpire > state.time - 5) {
+      const aysl = state.units.find(
+        (x: any) => x.def.id === "aysl" && x.team !== u.team && !x.isDead
+      );
+      if (aysl) {
+        const heal = Math.floor(aysl.maxHp * 0.2);
+        aysl.currentHp = Math.min(aysl.maxHp, aysl.currentHp + heal);
+        // Reduce all dragon CDs on aysl's team by 20%
+        for (const d of state.units.filter(
+          (x: any) =>
+            x.def.race === "dragon" && x.team === aysl.team && !x.isDead
+        )) {
+          d.cooldownRemaining = Math.max(0, d.cooldownRemaining * 0.8);
+        }
+        state.battleLog.push({
+          time: state.time,
+          text: `🌑 暗影噬龙 击杀奖励: 回20%HP+全龙CD-20%`,
+          type: "status",
+        });
+      }
+    }
     if (u.def.race === "undead" && !u.hasRevived) {
       // Check if revive already used for this team
       const key = `undeadRevive_${u.team}`;
@@ -867,7 +898,8 @@ function updateBonds(state: any) {
   }
   // 分析者天赋：标记对称敌人→闪避/额外防御=0
   for (const fxz of state.units.filter(
-    (u: any) => u.team === "ally" && !u.isDead && u.def.id === "fxz"
+    (u: any) =>
+      u.team === "ally" && !u.isDead && u.def.id === "fxz" && !isRuined(u)
   )) {
     // Find symmetric enemy: same col, mirrored row
     const symEnemy = state.units.find(
@@ -922,7 +954,8 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
       !u.isDead &&
       u.team === caster.team &&
       u.def.id === "xdds" &&
-      u.row === caster.row
+      u.row === caster.row &&
+      !isRuined(u)
   )) {
     if (xdds.id === caster.id) continue;
     const stacks = Math.min((xdds._asStack || 0) + 1, 5);
@@ -1251,7 +1284,7 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
           value: val,
         });
         // 水晶室女天赋：友方法师施加异常→自身技能冷却-1.5s
-        if (caster.def.race === "mage") {
+        if (caster.def.race === "mage" && !isRuined(caster)) {
           for (const u of state.units.filter(
             (x: any) =>
               x.team === caster.team && !x.isDead && x.def.id === "sjsn"

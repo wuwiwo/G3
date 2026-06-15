@@ -545,6 +545,48 @@ registerSkillHandler("zzx_buff", (caster, state, log) => {
   });
 });
 
+// 冰霜邪龙 — 每3次升级冰冻
+registerSkillHandler("bsxl_freeze", (caster, state, log) => {
+  const enemies = state.units
+    .filter((u: any) => u.team !== caster.team && !u.isDead)
+    .filter((u: any) => u.row === 2);
+  if (enemies.length === 0) return;
+  caster._bsxlFreezeCount = (caster._bsxlFreezeCount || 0) + 1;
+  const isFreeze = caster._bsxlFreezeCount >= 3;
+  if (isFreeze) caster._bsxlFreezeCount = 0;
+
+  for (const t of enemies) {
+    let dmgRatio = 0.8;
+    let dmgType = DamageType.Magical;
+    if (isFreeze) {
+      dmgRatio = 0.8;
+      dmgType = DamageType.Pure;
+      t.statuses.push({
+        type: StatusType.Freeze,
+        remainingSeconds: 3,
+        stacks: 1,
+      });
+    }
+    const result = calcDamage(caster, t, dmgRatio, dmgType, { isSkill: true });
+    t.currentHp -= result.finalDamage;
+    t.lastHitBy = caster.id;
+    addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
+    addStat(state, caster.id, "skillDamage", result.finalDamage);
+    addStat(
+      state,
+      caster.id,
+      dmgType === "magical" ? "magicalDamage" : "pureDamage",
+      result.finalDamage
+    );
+    addStat(state, t.id, "totalDamageReceived", result.finalDamage);
+  }
+  log.push({
+    time: state.time,
+    text: `❄️ ${caster.def.name} ${isFreeze ? "冰冻吐息(纯粹)" : "冰霜吐息"}`,
+    type: "damage",
+  });
+});
+
 // 分析者 — 提升3名友方最低防御项5%防御力
 registerSkillHandler("fxz_analyze", (caster, state, log) => {
   const allies = state.units.filter(

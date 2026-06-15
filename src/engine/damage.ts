@@ -157,6 +157,9 @@ export function calcDamage(
     // Curse: defender defense -10%
     if (defender.statuses.some((s: any) => s.type === StatusType.Curse))
       def *= 0.9;
+    // ArmorBreak: base defense失效, extra defense 50% (total = current * 0.5)
+    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak))
+      def *= 0.5;
     if (extraOpts?.ignoreBaseDef) {
       def = 0; // Ignore all defense for counter-attack etc.
     }
@@ -167,6 +170,9 @@ export function calcDamage(
     // Curse: -10% mdef
     if (defender.statuses.some((s: any) => s.type === StatusType.Curse))
       def *= 0.9;
+    // ArmorBreak: also applies to magical defense (both def types)
+    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak))
+      def *= 0.5;
     // Petrify: +100% mdef
     if (defender.statuses.some((s: any) => s.type === StatusType.Petrify))
       def *= 2;
