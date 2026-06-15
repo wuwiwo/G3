@@ -441,6 +441,13 @@ function updateStatuses(state: any) {
       unit.currentHp -= dmg;
       addStat(state, unit.id, "totalDamageReceived", dmg);
     }
+    // 中毒DoT: 每秒攻击×3%纯粹 + 治疗-25% (在calcHeal处理) + 生命回复-50% (暂未实现)
+    const poison = unit.statuses.find((s) => s.type === StatusType.Poison);
+    if (poison && poison.value) {
+      const dmg = poison.value;
+      unit.currentHp -= dmg;
+      addStat(state, unit.id, "totalDamageReceived", dmg);
+    }
     // 炽热战士天赋：每秒对同排敌方造成纯粹伤害
     if (unit.def.id === "crzs") {
       const sameRowEnemies = getEnemies(state, unit.team).filter(
@@ -1131,6 +1138,9 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         (a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp
       );
       targets = [beast[0] || all[0]];
+      // Every 4th cast: +50% healing + cleanse
+      caster._dxmCastCount = (caster._dxmCastCount || 0) + 1;
+      const upgraded = caster._dxmCastCount % 4 === 0;
     } else if (sk.id === "lxgz_heal") {
       targets = allies
         .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp)
@@ -1156,7 +1166,32 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         targetMaxHpRatio: sk.heal.targetMaxHpRatio,
         targetLostHpRatio: sk.heal.targetLostHpRatio,
       });
-      t.currentHp = Math.min(t.maxHp, t.currentHp + amount);
+      // 独行马第4次升级: +50%治疗+驱散
+      let finalAmount = amount;
+      if (
+        sk.id === "dxm_heal" &&
+        caster._dxmCastCount &&
+        caster._dxmCastCount % 4 === 0
+      ) {
+        finalAmount = Math.floor(amount * 1.5);
+        // Cleanse negative statuses
+        const neg = [
+          "stun",
+          "sleep",
+          "petrify",
+          "freeze",
+          "bind",
+          "burn",
+          "armorBreak",
+          "disarm",
+          "curse",
+          "ruin",
+          "silence",
+          "poison",
+        ];
+        t.statuses = t.statuses.filter((s: any) => !neg.includes(s.type));
+      }
+      t.currentHp = Math.min(t.maxHp, t.currentHp + finalAmount);
       t.lastHeal = { value: amount, time: state.time };
       t.lastAction = { time: state.time, isTarget: true };
       addStat(state, caster.id, "totalHealingDone", amount);
@@ -1201,6 +1236,7 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
           "ruin",
           "silence",
           "doom",
+          "poison",
         ];
         if (negative.includes(eff.type) && t._immuneAbnormal) continue;
         // For burn, calculate per-tick damage immediately using caster's attack

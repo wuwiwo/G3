@@ -48,6 +48,8 @@ export enum StatusType {
   Bloodrage = "bloodrage",
   Stealth = "stealth",
   Shield = "shield",
+  Poison = "poison",
+  AntiHeal = "antiHeal",
 }
 export interface StatusEffect {
   type: StatusType;
@@ -176,6 +178,9 @@ export interface ArenaUnit {
   _asStack?: number;
   _chargeTime?: number;
   _markedByAnalyzer?: boolean;
+  _bslrSlowStack?: number;
+  _dxmCastCount?: number;
+  _bsxlFreezeCount?: number;
   _trapDamage?: { casterAtk: number; casterId: string };
   _delayedDamage?: { amount: number; expireTime: number }[];
   // Equipment (v1.8)

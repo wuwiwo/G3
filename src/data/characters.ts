@@ -126,9 +126,10 @@ const zzx: CharacterDef = {
     id: "zzx_buff",
     name: "鼓舞",
     tags: ["增益"],
-    cooldown: 10,
+    cooldown: 9,
     castTime: 0,
-    description: "使一名友方（优先兽族）提升40%攻击力，持续5s",
+    description: "使一名友方（优先兽族）提升40%攻击力5s+自身与目标双抗7s",
+    scriptId: "zzx_buff",
   },
 };
 
@@ -286,6 +287,7 @@ const bslr: CharacterDef = {
     description: "对1排敌人持续射击3s，每秒攻击×90%，每次降6%攻速（叠3层）",
     damage: [{ type: DamageType.Physical, atkRatio: 0.9 }],
     aoe: { maxTargets: 3 },
+    scriptId: "bslr_shot",
   },
 };
 
@@ -1200,9 +1202,10 @@ const xblr: CharacterDef = {
     tags: ["移动"],
     cooldown: 10,
     castTime: 0,
-    description: "跳至空位→1-3名敌人各3发子弹：70%/80%/100%+第3发必暴击",
-    damage: [{ type: DamageType.Physical, atkRatio: 0.83 }],
+    description: "跳至空位→1-3名敌人各3发：80%/90%/120%+第3发必暴击",
+    damage: [{ type: DamageType.Physical, atkRatio: 0.97 }],
     aoe: { maxTargets: 3 },
+    scriptId: "xblr_shot",
   },
 };
 

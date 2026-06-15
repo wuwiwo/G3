@@ -274,5 +274,9 @@ export function calcHeal(
   if (target.statuses.find((s) => s.type === StatusType.Freeze)) {
     heal *= 0.5;
   }
+  // Check for anti-heal (no healing at all)
+  if (target.statuses.find((s) => s.type === StatusType.AntiHeal)) {
+    heal = 0;
+  }
   return Math.floor(Math.max(0, heal));
 }

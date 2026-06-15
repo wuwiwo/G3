@@ -448,6 +448,103 @@ registerSkillHandler("dl_stomp", (caster, state, log) => {
   });
 });
 
+// 西部猎人 — 跳跃射击：3发子弹
+registerSkillHandler("xblr_shot", (caster, state, log) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  if (enemies.length === 0) return;
+  const nTargets = Math.floor(Math.random() * 3) + 1;
+  const targets = shuffle(enemies).slice(0, nTargets) as any[];
+  const ratios = [0.8, 0.9, 1.2];
+  for (const t of targets) {
+    for (let i = 0; i < 3; i++) {
+      const result = calcDamage(caster, t, ratios[i], DamageType.Physical, {
+        isSkill: true,
+      });
+      let dmg = result.finalDamage;
+      if (i === 2) dmg = Math.floor(dmg * 1.35);
+      t.currentHp -= dmg;
+      addStat(state, caster.id, "totalDamageDealt", dmg);
+      addStat(state, caster.id, "skillDamage", dmg);
+      addStat(state, caster.id, "physicalDamage", dmg);
+      addStat(state, t.id, "totalDamageReceived", dmg);
+    }
+  }
+  log.push({
+    time: state.time,
+    text: `🏹 ${caster.def.name} 跳跃射击: ${targets.length}名敌人`,
+    type: "damage",
+  });
+});
+
+// 冰霜猎人 — 持续射击+降攻速
+registerSkillHandler("bslr_shot", (caster, state, log) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  const shuffled = shuffle(enemies);
+  const targets = shuffle(enemies).slice(0, 3) as any[];
+  for (const t of targets) {
+    const result = calcDamage(caster, t, 0.9, DamageType.Physical, {
+      isSkill: true,
+    });
+    t.currentHp -= result.finalDamage;
+    t.lastDamage = {
+      value: result.finalDamage,
+      time: state.time,
+      type: "physical",
+    };
+    t.lastHitBy = caster.id;
+    addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
+    addStat(state, caster.id, "skillDamage", result.finalDamage);
+    addStat(state, caster.id, "physicalDamage", result.finalDamage);
+    addStat(state, t.id, "totalDamageReceived", result.finalDamage);
+    // Attack speed reduction: 6% per stack, max 3 stacks
+    const asStack = t._bslrSlowStack || 0;
+    if (asStack < 3) {
+      t._bslrSlowStack = asStack + 1;
+      t.attackTimer *= 1.06; // 6% slower
+    }
+    log.push({
+      time: state.time,
+      text: `🏹 ${pfx(caster)} → ${pfx(t)}: ${result.finalDamage}💥(攻速-6%)`,
+      type: "damage",
+    });
+  }
+});
+
+// 智慧猩 — 鼓舞：攻+40%+双抗
+registerSkillHandler("zzx_buff", (caster, state, log) => {
+  const allies = state.units.filter(
+    (u: any) => u.team === caster.team && !u.isDead && u.id !== caster.id
+  );
+  if (allies.length === 0) return;
+  const beast = allies.filter((u: any) => u.def.race === "beast");
+  const target = beast[0] || allies.sort(() => Math.random() - 0.5)[0];
+  // Attack buff 5s
+  const atkBuff = Math.floor(target.currentAttack * 0.4);
+  target.currentAttack += atkBuff;
+  // Resistance buff 7s
+  caster.statuses.push({
+    type: StatusType.Inspire,
+    remainingSeconds: 7,
+    stacks: 1,
+    value: 0.75, // 25% magic reduction
+  });
+  target.statuses.push({
+    type: StatusType.Inspire,
+    remainingSeconds: 7,
+    stacks: 1,
+    value: 0.75,
+  });
+  log.push({
+    time: state.time,
+    text: `📯 ${caster.def.name} 鼓舞 ${target.def.name}: +40%攻+双抗7s`,
+    type: "status",
+  });
+});
+
 // 分析者 — 提升3名友方最低防御项5%防御力
 registerSkillHandler("fxz_analyze", (caster, state, log) => {
   const allies = state.units.filter(
