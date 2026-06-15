@@ -779,8 +779,9 @@ function updateRevivals(state: any) {
         u.attackTimer = 0;
         u.statuses = [];
         const pct = u.reviving.hpPct;
+        const invTmr = u.reviving.invTimer ?? 1;
         u.reviving = undefined;
-        u.invincibleTimer = u.reviving.invTimer ?? 1;
+        u.invincibleTimer = invTmr;
         u.hasRevived = true;
         state.battleLog.push({
           time: state.time,
