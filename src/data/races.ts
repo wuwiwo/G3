@@ -16,8 +16,12 @@ interface TierData {
 const BASE_BONDS: Record<Race, TierData> = {
   [Race.Beast]: {
     2: { attackBonus: 10, defenseBonus: 5 },
-    3: { attackBonus: 15, defenseBonus: 10, special: "吸血10%" },
-    4: { attackBonus: 25, defenseBonus: 15, special: "吸血20%" },
+    3: { attackBonus: 15, defenseBonus: 10, special: "吸血15%+5%攻击纯粹伤害" },
+    4: {
+      attackBonus: 25,
+      defenseBonus: 20,
+      special: "吸血30%+10%攻击纯粹伤害",
+    },
   },
   [Race.Hunter]: {
     2: { attackBonus: 15 },
@@ -31,16 +35,20 @@ const BASE_BONDS: Record<Race, TierData> = {
   },
   [Race.Mage]: {
     2: { special: "-20%魔防" },
-    3: { special: "-35%魔防+15%吸血" },
-    4: { special: "-50%魔防+30%吸血" },
+    3: { special: "-35%魔防+10%吸血" },
+    4: { special: "-50%魔防+25%吸血" },
   },
   [Race.Undead]: {
-    2: { attackBonus: 5, defenseBonus: 2 },
-    3: { attackBonus: 10, defenseBonus: 5, special: "复活13s/15%HP/扣25%" },
+    2: { attackBonus: 5, defenseBonus: 5 },
+    3: {
+      attackBonus: 10,
+      defenseBonus: 10,
+      special: "复活13s+扣25%+每秒6%HP/8s+无敌1s",
+    },
     4: {
       attackBonus: 15,
-      defenseBonus: 10,
-      special: "复活7s/35%HP/扣10%+无敌1s",
+      defenseBonus: 15,
+      special: "复活7s+扣10%+每秒7%HP/10s+无敌3s",
     },
   },
   [Race.Dragon]: {

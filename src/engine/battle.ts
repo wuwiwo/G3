@@ -84,7 +84,7 @@ export function createUnit(
     statuses: [],
     autoAttackTargetId: undefined,
     evasion: def.id === "sszs" ? 0.25 : 0,
-    hitRateMod: def.id === "hd" ? -0.1 : 0,
+    hitRateMod: def.id === "hd" ? -0.15 : 0,
   };
 }
 
@@ -120,17 +120,17 @@ function pickTarget(
       }
     }
   }
-  // Default: front row weighted
+  // Default: front row weighted (v1.8: 60/25/15)
   const hasFront = enemies.some((e) => e.row === Row.Front);
   const chances = hasFront
     ? [
-        { row: Row.Front, c: 50 },
-        { row: Row.Mid, c: 30 },
-        { row: Row.Back, c: 20 },
+        { row: Row.Front, c: 60 },
+        { row: Row.Mid, c: 25 },
+        { row: Row.Back, c: 15 },
       ]
     : [
-        { row: Row.Mid, c: 60 },
-        { row: Row.Back, c: 40 },
+        { row: Row.Mid, c: 65 },
+        { row: Row.Back, c: 35 },
       ];
   const total = chances.reduce((s, r) => s + r.c, 0);
   let roll = Math.random() * total;
@@ -307,13 +307,16 @@ export function initBattle(
             text: `🌟 ${label} 战士×${cnt}羁绊: HP+${effect.hpBonus}%${extra}`,
             type: "system",
           });
-        } else if (race === "mage")
+        } else if (race === "mage") {
+          const mdefStr =
+            cnt >= 4 ? "50%" : cnt >= 3 ? "35%" : cnt >= 2 ? "20%" : "0%";
+          const lsStr = cnt >= 4 ? "25%" : cnt >= 3 ? "10%" : "";
           state.battleLog.push({
             time: 0,
-            text: `🌟 ${label} 法师×${cnt}羁绊: 魔防-50%+吸血30%`,
+            text: `🌟 ${label} 法师×${cnt}羁绊: 魔防-${mdefStr}${lsStr ? `+吸血${lsStr}` : ""}`,
             type: "system",
           });
-        else if (race === "dragon")
+        } else if (race === "dragon")
           state.battleLog.push({
             time: 0,
             text: `🌟 ${label} 龙族×${cnt}羁绊: CD-80%+减伤40%10s`,
@@ -372,7 +375,7 @@ function deferDamage(target: any, dmg: number, state: any) {
   );
   if (inspire) {
     target._delayedDamage = target._delayedDamage || [];
-    target._delayedDamage.push({ amount: dmg, expireTime: state.time + 6 });
+    target._delayedDamage.push({ amount: dmg, expireTime: state.time + 5 });
   } else {
     target.currentHp -= dmg;
   }
@@ -455,10 +458,10 @@ function updateStatuses(state: any) {
   const syzT = state._syzDeathTime;
   if (syzT !== undefined) {
     const el = state.time - syzT;
-    if (el >= 0 && el < 5) {
+    if (el >= 0 && el < 6) {
       const baseAtk = state._syzDeathAttack || 0;
-      const atk80 = baseAtk > 0 ? Math.floor(baseAtk * 0.8) : 482;
-      const heal = Math.floor(atk80 * (1 + el * 0.1));
+      const atk60 = baseAtk > 0 ? Math.floor(baseAtk * 0.6) : 361;
+      const heal = Math.floor(atk60 * (1 + el * 0.1));
       for (const u of state.units) {
         if (u.team === "ally" && !u.isDead && u.def.race === "mage")
           u.currentHp = Math.min(u.maxHp, u.currentHp + heal);
@@ -629,10 +632,18 @@ function updateAutoAttacks(state: any) {
                 u.team === unit.team && !u.isDead && u.def.race === "beast"
             ).length;
             if (beastCnt >= 3 && target.currentHp / target.maxHp < 0.5) {
-              const heal = Math.floor(result.finalDamage * 0.2);
+              const is4Tier = beastCnt >= 4;
+              const lsPct = is4Tier ? 0.3 : 0.15;
+              const purePct = is4Tier ? 0.1 : 0.05;
+              const heal = Math.floor(result.finalDamage * lsPct);
               unit.currentHp = Math.min(unit.maxHp, unit.currentHp + heal);
               addStat(state, unit.id, "totalHealingDone", heal);
               addStat(state, unit.id, "lifeStealHealing", heal);
+              // Pure damage bonus to <50% HP target
+              const pureDmg = Math.floor(unit.currentAttack * purePct);
+              target.currentHp -= pureDmg;
+              addStat(state, unit.id, "totalDamageDealt", pureDmg);
+              addStat(state, unit.id, "pureDamage", pureDmg);
             }
           }
           // 神谕者天赋：攻击治疗
@@ -696,12 +707,13 @@ function updateDeaths(state: any) {
         const is4 = totalU >= 4;
         const deductPct = is4 ? 0.9 : 0.75; // 扣除10%或25%
         const reviveTime = is4 ? 7 : 13;
-        const reviveHp = is4 ? 0.35 : 0.15;
+        const reviveHp = is4 ? 0.35 : 0.15; // 35%/15% HP on revival
+        const invTimer = is4 ? 3 : 1; // 无敌3s (4人) / 1s (3人)
         for (const m of alive) {
           if (m.def.race === "undead")
             m.currentHp = Math.max(1, Math.floor(m.currentHp * deductPct));
         }
-        u.reviving = { timer: reviveTime, hpPct: reviveHp };
+        u.reviving = { timer: reviveTime, hpPct: reviveHp, invTimer };
         state.battleLog.push({
           time: state.time,
           text: `💀 ${u.def.name} ${totalU}羁绊激活，${reviveTime}s后复活(扣除${is4 ? 10 : 25}%HP)！`,
@@ -725,7 +737,7 @@ function updateRevivals(state: any) {
         u.statuses = [];
         const pct = u.reviving.hpPct;
         u.reviving = undefined;
-        u.invincibleTimer = 1;
+        u.invincibleTimer = u.reviving.invTimer ?? 1;
         u.hasRevived = true;
         state.battleLog.push({
           time: state.time,
@@ -846,6 +858,29 @@ function updateBonds(state: any) {
       if (h.id !== "sszs") h.evasion = Math.max(h.evasion || 0, 0.25);
     }
   }
+  // 分析者天赋：标记对称敌人→闪避/额外防御=0
+  for (const fxz of state.units.filter(
+    (u: any) => u.team === "ally" && !u.isDead && u.def.id === "fxz"
+  )) {
+    // Find symmetric enemy: same col, mirrored row
+    const symEnemy = state.units.find(
+      (u: any) =>
+        u.team === "enemy" &&
+        !u.isDead &&
+        u.col === fxz.col &&
+        u.row === fxz.row
+    );
+    if (symEnemy) {
+      symEnemy.evasion = 0;
+      symEnemy._markedByAnalyzer = true;
+    }
+  }
+  // Reset evasion for unmarked units (森之射手 still handles its own)
+  for (const u of state.units.filter(
+    (x: any) => x.team === "enemy" && !x._markedByAnalyzer
+  )) {
+    // Don't reset - evasion handled per-character
+  }
 }
 
 function trimLog(state: any) {
@@ -927,11 +962,18 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         (u: any) => u.def.race === "hunter"
       ).length;
       if (hunterCount >= 3) {
-        // Counter-attack: 100% physical, ignores defense but can be blocked
-        const counterResult = calcDamage(t, caster, 1, DamageType.Physical, {
-          isSkill: true,
-          ignoreBaseDef: true,
-        });
+        const is4Tier = hunterCount >= 4;
+        // Counter-attack: 3人 75% damage (def applied), 4人 100% ignore defense
+        const counterResult = calcDamage(
+          t,
+          caster,
+          is4Tier ? 1 : 0.75,
+          DamageType.Physical,
+          {
+            isSkill: true,
+            ignoreBaseDef: is4Tier,
+          }
+        );
         const counterDmg = counterResult.finalDamage;
         deferDamage(caster, counterDmg, state);
         caster.lastDamage = {
@@ -965,14 +1007,17 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
       for (const t of targets) {
         if (t.isDead) continue;
         actionTargets.push(t.def.name);
-        // Mage bond: -50% magic defense
+        // Mage bond: tiered magic defense reduction
         const mageCnt = state.units.filter(
           (u: any) =>
             u.team === caster.team && !u.isDead && u.def.race === "mage"
         ).length;
+        const mageMdefMult =
+          mageCnt >= 4 ? 0.5 : mageCnt >= 3 ? 0.65 : mageCnt >= 2 ? 0.8 : 1;
+        const mageLsPct = mageCnt >= 4 ? 0.25 : mageCnt >= 3 ? 0.1 : 0;
         const origMdef = t.currentMagicalDef;
-        if (mageCnt >= 3 && dmgFormula.type === "magical")
-          t.currentMagicalDef = Math.floor(t.currentMagicalDef * 0.5);
+        if (mageMdefMult < 1 && dmgFormula.type === "magical")
+          t.currentMagicalDef = Math.floor(t.currentMagicalDef * mageMdefMult);
         const result = calcDamage(
           caster,
           t,
@@ -1003,7 +1048,7 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         deferDamage(t, result.finalDamage, state);
         t._wasHitDuringCast = true;
         t._wasDamagedDuringCast = true;
-        if (mageCnt >= 3 && dmgFormula.type === "magical")
+        if (mageMdefMult < 1 && dmgFormula.type === "magical")
           t.currentMagicalDef = origMdef;
         t.lastDamage = {
           value: result.finalDamage,
@@ -1040,8 +1085,8 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
             type: "damage",
           });
           // Mage bond: 30% skill life steal (v1.7)
-          if (mageCnt >= 3 && result.finalDamage > 0) {
-            const lsHeal = Math.floor(result.finalDamage * 0.3);
+          if (mageLsPct > 0 && result.finalDamage > 0) {
+            const lsHeal = Math.floor(result.finalDamage * mageLsPct);
             caster.currentHp = Math.min(
               caster.maxHp,
               caster.currentHp + lsHeal

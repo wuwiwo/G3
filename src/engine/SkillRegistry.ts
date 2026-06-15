@@ -91,11 +91,11 @@ registerSkillHandler("xjl_link", (caster, state, log) => {
     mages[0] ||
     allies.sort((a: any, b: any) => b.currentAttack - a.currentAttack)[0];
   if (target) {
-    target.skillPower = (target.skillPower || 1) + 0.4;
-    target.lifeSteal = (target.lifeSteal || 0) + 0.3;
+    target.skillPower = (target.skillPower || 1) + 0.3;
+    target.lifeSteal = (target.lifeSteal || 0) + 0.2;
     log.push({
       time: state.time,
-      text: `🔗 ${caster.def.name} 链接 ${target.def.name}: 技能+40%吸血+30%`,
+      text: `🔗 ${caster.def.name} 链接 ${target.def.name}: 技能+30%吸血+20%`,
       type: "status",
     });
   }
@@ -141,8 +141,8 @@ registerSkillHandler("swxz_drain", (caster, state, log) => {
   );
   const target = enemies[Math.floor(Math.random() * enemies.length)];
   if (!target) return;
-  const perTick = Math.floor(target.currentAttack * 0.1 + target.maxHp * 0.03);
-  const totalDmg = perTick * 5;
+  const perTick = Math.floor(target.currentAttack * 0.07 + target.maxHp * 0.02);
+  const totalDmg = perTick * 6;
   target.currentHp -= totalDmg;
   // 延迟结算（若目标有神之庇佑）
   const insp2 = target.statuses?.find((s: any) => s.type === "inspire");
@@ -151,7 +151,7 @@ registerSkillHandler("swxz_drain", (caster, state, log) => {
     target._delayedDamage = target._delayedDamage || [];
     target._delayedDamage.push({
       amount: totalDmg,
-      expireTime: state.time + 6,
+      expireTime: state.time + 5,
     });
   }
   const heal = Math.floor(totalDmg * 0.2);
@@ -173,7 +173,7 @@ registerSkillHandler("syz_bless", (caster, state, log) => {
   const allies = state.units
     .filter((u: any) => u.team === caster.team && !u.isDead)
     .sort((a: any, b: any) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
-  const targets = allies.slice(0, 3);
+  const targets = allies.slice(0, 2);
   for (const t of targets) {
     const neg = [
       "stun",
@@ -189,12 +189,12 @@ registerSkillHandler("syz_bless", (caster, state, log) => {
       "silence",
     ];
     t.statuses = t.statuses.filter((s: any) => !neg.includes(s.type));
-    // Apply Inspire: 50% damage reduction for 7s
+    // Apply Inspire: 20% damage reduction for 7s
     t.statuses.push({
       type: StatusType.Inspire,
       remainingSeconds: 7,
       stacks: 1,
-      value: 0.5,
+      value: 0.8,
     });
     log.push({
       time: state.time,
@@ -448,6 +448,28 @@ registerSkillHandler("dl_stomp", (caster, state, log) => {
   });
 });
 
+// 分析者 — 提升3名友方最低防御项5%防御力
+registerSkillHandler("fxz_analyze", (caster, state, log) => {
+  const allies = state.units.filter(
+    (u: any) => u.team === caster.team && !u.isDead
+  );
+  const shuffled = allies.sort(() => Math.random() - 0.5);
+  const targets = shuffled.slice(0, 3).filter((u: any) => u.id !== caster.id);
+  if (targets.length === 0) return;
+  for (const t of targets) {
+    if (t.currentPhysicalDef < t.currentMagicalDef) {
+      t.currentPhysicalDef = Math.floor(t.currentPhysicalDef * 1.05);
+    } else {
+      t.currentMagicalDef = Math.floor(t.currentMagicalDef * 1.05);
+    }
+  }
+  log.push({
+    time: state.time,
+    text: `📊 ${caster.def.name} 分析: 提升${targets.length}名友方防御`,
+    type: "status",
+  });
+});
+
 // 白马行者 — 蓄力：随机1/2/3s，不同蓄力时间对应不同目标排
 registerSkillHandler("bmxz_charge", (caster, state, log) => {
   const enemies = state.units.filter(
@@ -526,8 +548,9 @@ function applyMageLifeSteal(
   const mageCnt = state.units.filter(
     (u: any) => u.team === caster.team && !u.isDead && u.def.race === "mage"
   ).length;
-  if (mageCnt >= 3) {
-    const lsHeal = Math.floor(damage * 0.3);
+  const lsPct = mageCnt >= 4 ? 0.25 : mageCnt >= 3 ? 0.1 : 0;
+  if (lsPct > 0) {
+    const lsHeal = Math.floor(damage * lsPct);
     caster.currentHp = Math.min(caster.maxHp, caster.currentHp + lsHeal);
     log.push({
       time: state.time,

@@ -147,7 +147,7 @@ export interface ArenaUnit {
   lastHitTarget?: string;
   lastHitBy?: string;
   hasRevived?: boolean;
-  reviving?: { timer: number; hpPct: number };
+  reviving?: { timer: number; hpPct: number; invTimer?: number };
   invincibleTimer?: number;
   // Summon system
   summonerId?: string;
@@ -175,6 +175,7 @@ export interface ArenaUnit {
   _meteorCount?: number;
   _asStack?: number;
   _chargeTime?: number;
+  _markedByAnalyzer?: boolean;
   _trapDamage?: { casterAtk: number; casterId: string };
   _delayedDamage?: { amount: number; expireTime: number }[];
   // Equipment (v1.8)
