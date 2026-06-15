@@ -205,6 +205,18 @@ export interface BattleState {
     ally: { race: string; count: number }[];
     enemy: { race: string; count: number }[];
   };
+  skillStats?: Record<
+    string,
+    {
+      skillName: string;
+      ownerId: string;
+      casts: number;
+      totalDamage: number;
+      physDmg: number;
+      magDmg: number;
+      pureDmg: number;
+    }
+  >;
 }
 export interface BattleLogEntry {
   id: string;

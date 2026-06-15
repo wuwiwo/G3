@@ -291,6 +291,7 @@ export function initBattle(
     turnEvents: [],
     battleLog: [{ time: 0, text: "⚔️ 战斗开始！", type: "system" }],
     stats,
+    skillStats: {},
     bonds: {
       ally: calcBonds(allies),
       enemy: calcBonds(enemies),
@@ -605,6 +606,14 @@ function updateAutoAttacks(state: any) {
         if (fs.triggered) result.isCrit = true;
         result.finalDamage = fs.damage;
         deferDamage(target, result.finalDamage, state);
+        trackSkill(
+          state,
+          unit.id,
+          "aa",
+          "平砍",
+          result.finalDamage,
+          "physical"
+        );
         // Set interrupt flags on target
         target._wasHitDuringCast = true;
         target._wasDamagedDuringCast = true;
@@ -1114,6 +1123,14 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
               : "pureDamage",
           result.finalDamage
         );
+        trackSkill(
+          state,
+          caster.id,
+          sk.id,
+          sk.name,
+          result.finalDamage,
+          dmgFormula.type
+        );
         addStat(state, t.id, "totalDamageReceived", result.finalDamage);
         addStat(
           state,
@@ -1322,6 +1339,36 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
 function addStat(state: any, unitId: string, field: string, value: number) {
   const s = state.stats?.find((st: any) => st.unitId === unitId);
   if (s && typeof s[field] === "number") s[field] += value;
+}
+
+function trackSkill(
+  state: any,
+  unitId: string,
+  skillId: string,
+  skillName: string,
+  damage: number,
+  dmgType: string
+) {
+  if (!state.skillStats) state.skillStats = {};
+  const key = `${unitId}_${skillId}`;
+  const existing = state.skillStats[key];
+  if (!existing) {
+    state.skillStats[key] = {
+      skillName,
+      ownerId: unitId,
+      casts: 0,
+      totalDamage: 0,
+      physDmg: 0,
+      magDmg: 0,
+      pureDmg: 0,
+    };
+  }
+  const s = state.skillStats[key];
+  s.casts += 1;
+  s.totalDamage += damage;
+  if (dmgType === "physical") s.physDmg += damage;
+  else if (dmgType === "magical") s.magDmg += damage;
+  else s.pureDmg += damage;
 }
 
 export function generateEnemyTeam(): { charId: string; row: Row }[] {

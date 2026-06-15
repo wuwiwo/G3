@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { initBattle, processTick } from "../engine/battle";
-import { CHARACTER_MAP } from "../data/characters";
+import { CHARACTER_MAP, ALL_CHARACTERS } from "../data/characters";
+import { RACE_NAMES } from "../types";
 import type { BattleState } from "../types";
 import type { BattleStats } from "../types/stats";
 
@@ -80,6 +81,7 @@ export const BatchTest: React.FC<Props> = ({
     allyWins: number;
     enemyWins: number;
     unitStats: Map<string, UnitAverages>;
+    skillStats: Map<string, any>;
   } | null>(null);
 
   const runTest = useCallback(async () => {
@@ -89,6 +91,7 @@ export const BatchTest: React.FC<Props> = ({
 
     let allyWins = 0;
     const unitAccum = new Map<string, { stat: UnitAverages; count: number }>();
+    const skillAccum = new Map<string, any>();
 
     for (let i = 0; i < runs; i++) {
       const state = initBattle(allyTeam, enemyTeam) as unknown as BattleState;
@@ -140,6 +143,24 @@ export const BatchTest: React.FC<Props> = ({
         };
         unitAccum.set(key, { stat: entry, count: (existing?.count ?? 0) + 1 });
       }
+      // Accumulate skill stats
+      if ((state as any).skillStats) {
+        for (const [skey, sv] of Object.entries((state as any).skillStats)) {
+          const ss = sv as any;
+          const u = state.units.find((x: any) => x.id === ss.ownerId);
+          const existing = skillAccum.get(skey);
+          skillAccum.set(skey, {
+            skillName: ss.skillName,
+            ownerId: ss.ownerId,
+            ownerName: u?.def.name || "?",
+            casts: (existing?.casts ?? 0) + ss.casts,
+            totalDamage: (existing?.totalDamage ?? 0) + ss.totalDamage,
+            physDmg: (existing?.physDmg ?? 0) + ss.physDmg,
+            magDmg: (existing?.magDmg ?? 0) + ss.magDmg,
+            pureDmg: (existing?.pureDmg ?? 0) + ss.pureDmg,
+          });
+        }
+      }
 
       setProgress((prev) => prev + 1);
       if (i % 10 === 0) await new Promise((r) => setTimeout(r, 0));
@@ -171,6 +192,7 @@ export const BatchTest: React.FC<Props> = ({
       allyWins,
       enemyWins: runs - allyWins,
       unitStats: finalStats,
+      skillStats: skillAccum,
     });
     setRunning(false);
   }, [allyTeam, enemyTeam, runs]);
@@ -228,6 +250,50 @@ export const BatchTest: React.FC<Props> = ({
       );
     }
     navigator.clipboard.writeText(lines.join("\n"));
+  };
+
+  const exportPanel = () => {
+    const rows = [
+      [
+        "id",
+        "name",
+        "race",
+        "hp",
+        "atk",
+        "pDef",
+        "mDef",
+        "atkInterval",
+        "growthHP",
+        "growthATK",
+        "growthPDEF",
+        "growthMDEF",
+        "talent",
+        "skillId",
+        "skillCD",
+        "skillCastTime",
+      ],
+    ];
+    for (const c of ALL_CHARACTERS) {
+      rows.push([
+        c.id,
+        c.name,
+        RACE_NAMES[c.race] || c.race,
+        String(c.stats.hp),
+        String(c.stats.attack),
+        String(c.stats.physicalDef),
+        String(c.stats.magicalDef),
+        String(c.stats.attackInterval),
+        String(c.growth.hp),
+        String(c.growth.attack),
+        String(c.growth.physicalDef),
+        String(c.growth.magicalDef),
+        `"${c.talent.replace(/"/g, '""')}"`,
+        c.skill.id,
+        String(c.skill.cooldown),
+        String(c.skill.castTime),
+      ]);
+    }
+    navigator.clipboard.writeText(rows.map((r) => r.join(",")).join("\n"));
   };
 
   return (
@@ -376,6 +442,21 @@ export const BatchTest: React.FC<Props> = ({
               marginBottom: 4,
             }}
           >
+            <button
+              onClick={exportPanel}
+              style={{
+                padding: "3px 8px",
+                fontSize: 9,
+                fontWeight: 600,
+                background: "#222",
+                color: "#aaa",
+                border: "1px solid #333",
+                borderRadius: 4,
+                cursor: "pointer",
+              }}
+            >
+              导出角色面板
+            </button>
             <button
               onClick={copyBatchResults}
               style={{
@@ -601,6 +682,107 @@ export const BatchTest: React.FC<Props> = ({
               </tbody>
             </table>
           </div>
+
+          {/* Skill breakdown */}
+          {results.skillStats && results.skillStats.size > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ fontSize: 11, color: "#aaa", marginBottom: 3 }}>
+                技能统计（场均）：
+              </div>
+              <div
+                style={{
+                  maxHeight: 200,
+                  overflowY: "auto",
+                  background: "#111",
+                  borderRadius: 6,
+                  padding: 4,
+                }}
+              >
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: 9,
+                  }}
+                >
+                  <thead>
+                    <tr style={{ color: "#555" }}>
+                      <th style={{ padding: "1px 3px", textAlign: "left" }}>
+                        角色
+                      </th>
+                      <th style={{ padding: "1px 3px", textAlign: "left" }}>
+                        技能
+                      </th>
+                      <th style={{ padding: "1px 3px", textAlign: "right" }}>
+                        次数
+                      </th>
+                      <th style={{ padding: "1px 3px", textAlign: "right" }}>
+                        总伤
+                      </th>
+                      <th style={{ padding: "1px 3px", textAlign: "right" }}>
+                        物/魔/纯
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...results.skillStats.entries()]
+                      .sort(
+                        (a, b) =>
+                          (b[1] as any).totalDamage - (a[1] as any).totalDamage
+                      )
+                      .map(([skey, sv]: [string, any]) => {
+                        return (
+                          <tr
+                            key={skey}
+                            style={{ borderBottom: "1px solid #1a1a2e" }}
+                          >
+                            <td style={{ padding: "1px 3px", color: "#ccc" }}>
+                              {sv.ownerName || "?"}
+                            </td>
+                            <td style={{ padding: "1px 3px", color: "#aaa" }}>
+                              {sv.skillName}
+                            </td>
+                            <td
+                              style={{
+                                padding: "1px 3px",
+                                textAlign: "right",
+                                color: "#888",
+                              }}
+                            >
+                              {Math.round(sv.casts / runs)}
+                            </td>
+                            <td
+                              style={{
+                                padding: "1px 3px",
+                                textAlign: "right",
+                                color: "#f44336",
+                              }}
+                            >
+                              {Math.round(sv.totalDamage / runs)}
+                            </td>
+                            <td
+                              style={{ padding: "1px 3px", textAlign: "right" }}
+                            >
+                              <span style={{ color: "#ff5722" }}>
+                                {Math.round(sv.physDmg / runs)}
+                              </span>
+                              /
+                              <span style={{ color: "#7c4dff" }}>
+                                {Math.round(sv.magDmg / runs)}
+                              </span>
+                              /
+                              <span style={{ color: "#fff" }}>
+                                {Math.round(sv.pureDmg / runs)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
