@@ -448,6 +448,48 @@ registerSkillHandler("dl_stomp", (caster, state, log) => {
   });
 });
 
+// 白马行者 — 蓄力：随机1/2/3s，不同蓄力时间对应不同目标排
+registerSkillHandler("bmxz_charge", (caster, state, log) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  if (enemies.length === 0) return;
+  const chargeTime = caster._chargeTime || 2;
+  caster._chargeTime = undefined;
+  // Determine target rows based on charge time
+  let targetRows: number[];
+  if (chargeTime <= 1)
+    targetRows = [0]; // 前排
+  else if (chargeTime <= 2)
+    targetRows = [0, 1]; // 前中排
+  else targetRows = [0, 1, 2]; // 全场
+  const targets = enemies.filter((e: any) => targetRows.includes(e.row));
+  if (targets.length === 0) return;
+  const baseDmg = caster.currentAttack * 1.9;
+  const dmgPerTarget =
+    targets.length >= 5 ? Math.floor(baseDmg * 0.7) : Math.floor(baseDmg);
+  for (const t of targets) {
+    const result = calcDamage(caster, t, 1.9, DamageType.Magical, {
+      isSkill: true,
+    });
+    let finalDmg = result.finalDamage;
+    if (targets.length >= 5) finalDmg = Math.floor(finalDmg * 0.7);
+    t.currentHp -= finalDmg;
+    t.lastDamage = { value: finalDmg, time: state.time, type: "magical" };
+    t.lastHitBy = caster.id;
+    addStat(state, caster.id, "totalDamageDealt", finalDmg);
+    addStat(state, caster.id, "skillDamage", finalDmg);
+    addStat(state, caster.id, "magicalDamage", finalDmg);
+    addStat(state, t.id, "totalDamageReceived", finalDmg);
+  }
+  const label = chargeTime <= 1 ? "前排" : chargeTime <= 2 ? "前中排" : "全场";
+  log.push({
+    time: state.time,
+    text: `⚡ ${caster.def.name} 蓄力${chargeTime}s → ${label}: ${Math.floor(baseDmg)}魔法伤害`,
+    type: "damage",
+  });
+});
+
 // Initialize all registered handlers
 export function initSkillHandlers() {
   // Registrations are done at module load time above

@@ -174,6 +174,7 @@ export interface ArenaUnit {
   _markExpire?: number;
   _meteorCount?: number;
   _asStack?: number;
+  _chargeTime?: number;
   _trapDamage?: { casterAtk: number; casterId: string };
   _delayedDamage?: { amount: number; expireTime: number }[];
   // Equipment (v1.8)

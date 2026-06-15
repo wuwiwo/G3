@@ -190,8 +190,8 @@ export function initBattle(
       // Dragon: starting cooldown reduction + damage reduction
       if (race === "dragon") {
         const cdMult = count >= 4 ? 0.2 : 0.7; // 80% or 30% reduction
-        const drVal = count >= 4 ? 0.25 : 0.5; // 75% or 50% reduction
-        const drDuration = count >= 4 ? 7 : 5;
+        const drVal = count >= 4 ? 0.6 : 0.8; // 40% or 20% reduction
+        const drDuration = count >= 4 ? 10 : 6;
         for (const u of us) {
           if (u.def.race === "dragon") {
             u.cooldownRemaining *= cdMult;
@@ -295,13 +295,19 @@ export function initBattle(
       const bonds = getActiveBonds(us);
       for (const [race, { effect }] of bonds) {
         const cnt = us.filter((u: any) => u.def.race === race).length;
-        if (race === "warrior")
+        if (race === "warrior") {
+          const extra =
+            cnt >= 4
+              ? "+每5s回8%HP+20%吸血"
+              : cnt >= 3
+                ? "+每5s回4%HP+10%吸血"
+                : "";
           state.battleLog.push({
             time: 0,
-            text: `🌟 ${label} 战士×${cnt}羁绊: HP+50%`,
+            text: `🌟 ${label} 战士×${cnt}羁绊: HP+${effect.hpBonus}%${extra}`,
             type: "system",
           });
-        else if (race === "mage")
+        } else if (race === "mage")
           state.battleLog.push({
             time: 0,
             text: `🌟 ${label} 法师×${cnt}羁绊: 魔防-50%+吸血30%`,
@@ -310,7 +316,7 @@ export function initBattle(
         else if (race === "dragon")
           state.battleLog.push({
             time: 0,
-            text: `🌟 ${label} 龙族×${cnt}羁绊: CD-80%+减伤75%7s`,
+            text: `🌟 ${label} 龙族×${cnt}羁绊: CD-80%+减伤40%10s`,
             type: "system",
           });
         else {
@@ -402,7 +408,7 @@ export function processTick(state: any): any {
   updateAutoAttacks(state);
   updateDeaths(state);
   updateRevivals(state);
-  updateWarriorImmunity(state);
+  updateWarriorBonds(state);
   updateVictory(state);
   updateBonds(state);
   trimLog(state);
@@ -534,7 +540,13 @@ function updateSkills(state: any) {
     )
       continue;
     const sk = unit.def.skill;
-    if (sk.castTime > 0) {
+    if (sk.scriptId === "bmxz_charge") {
+      // Variable charge time: 1/2/3s random
+      const ct = [1, 2, 3][Math.floor(Math.random() * 3)];
+      unit._chargeTime = ct;
+      unit.isCasting = true;
+      unit.castTimer = ct;
+    } else if (sk.castTime > 0) {
       unit.isCasting = true;
       unit.castTimer = sk.castTime;
     } else {
@@ -742,33 +754,34 @@ function updateRevivals(state: any) {
   }
 }
 
-function updateWarriorImmunity(state: any) {
+function updateWarriorBonds(state: any) {
   state._warriorTimer = (state._warriorTimer || 0) + 0.1;
-  if (state._warriorTimer >= 10) {
+  // Apply lifesteal to warriors based on bond tier
+  for (const u of getAlive(state)) {
+    if (u.def.race !== "warrior") continue;
+    const wCnt = state.units.filter(
+      (x: any) => x.team === u.team && !x.isDead && x.def.race === "warrior"
+    ).length;
+    if (wCnt >= 4) {
+      u.lifeSteal = Math.max(u.lifeSteal || 0, 0.2);
+    } else if (wCnt >= 3) {
+      u.lifeSteal = Math.max(u.lifeSteal || 0, 0.1);
+    }
+  }
+  // Every 5s: heal warriors by % of max HP
+  if (state._warriorTimer >= 5) {
     state._warriorTimer = 0;
-    // Apply immunity to all alive warriors on both teams
     for (const u of getAlive(state)) {
+      if (u.def.race !== "warrior") continue;
       const wCnt = state.units.filter(
         (x: any) => x.team === u.team && !x.isDead && x.def.race === "warrior"
       ).length;
-      if (u.def.race === "warrior" && wCnt >= 3) {
-        u._immuneAbnormal = true;
-        u._immuneTimer = 5;
-      }
-    }
-    state.battleLog.push({
-      time: state.time,
-      text: `🛡 战士免疫异常 5s`,
-      type: "status",
-    });
-  }
-  // Tick down immunity
-  for (const u of state.units) {
-    if (u._immuneTimer > 0) {
-      u._immuneTimer -= 0.1;
-      if (u._immuneTimer <= 0) {
-        u._immuneAbnormal = false;
-        u._immuneTimer = 0;
+      if (wCnt >= 3) {
+        const pct = wCnt >= 4 ? 0.08 : 0.04;
+        const heal = Math.floor(u.maxHp * pct);
+        u.currentHp = Math.min(u.maxHp, u.currentHp + heal);
+        addStat(state, u.id, "totalHealingDone", heal);
+        addStat(state, u.id, "skillHealing", heal);
       }
     }
   }
@@ -1165,11 +1178,11 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
             u.cooldownRemaining = Math.max(0, u.cooldownRemaining - 1.5);
           }
         }
-        // 白马行者天赋：友方全场法师施加异常→自身技能冷却-1.5s
+        // 白马行者天赋：友方全场法师施加异常→自身技能冷却-1s
         for (const u of state.units.filter(
           (x: any) => x.team === caster.team && !x.isDead && x.def.id === "bmxz"
         )) {
-          u.cooldownRemaining = Math.max(0, u.cooldownRemaining - 1.5);
+          u.cooldownRemaining = Math.max(0, u.cooldownRemaining - 1);
         }
       }
     }
