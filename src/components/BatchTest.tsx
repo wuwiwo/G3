@@ -194,6 +194,42 @@ export const BatchTest: React.FC<Props> = ({
     ? ((results.enemyWins / runs) * 100).toFixed(1)
     : "0";
 
+  const copyBatchResults = () => {
+    if (!results || !unitList.length) return;
+    const lines: string[] = [];
+    lines.push(
+      `胜率\t我方${allyWinRate}%\t敌方${enemyWinRate}%\t总场次${runs}`
+    );
+    lines.push("");
+    lines.push(
+      "角色\t种族\t队伍\t输出\t物伤\t魔伤\t纯粹\t承伤\t承物\t承魔\t承纯\t治疗\t吸血\t击杀\t死亡\t技能\t存活(s)"
+    );
+    for (const [, stat] of unitList) {
+      lines.push(
+        [
+          stat.name,
+          stat.race,
+          stat.team,
+          stat.totalDamage,
+          stat.physicalDamage,
+          stat.magicalDamage,
+          stat.pureDamage,
+          stat.damageTaken,
+          stat.physDmgTaken,
+          stat.magDmgTaken,
+          stat.pureDmgTaken,
+          stat.totalHealing,
+          stat.lifeStealHealing,
+          stat.kills.toFixed(1),
+          stat.deaths.toFixed(1),
+          stat.skillCasts.toFixed(1),
+          stat.survivalTime.toFixed(1),
+        ].join("\t")
+      );
+    }
+    navigator.clipboard.writeText(lines.join("\n"));
+  };
+
   return (
     <div
       style={{
@@ -330,6 +366,31 @@ export const BatchTest: React.FC<Props> = ({
               </div>
               <div style={{ fontSize: 10, color: "#888" }}>总场次</div>
             </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 4,
+              justifyContent: "flex-end",
+              marginBottom: 4,
+            }}
+          >
+            <button
+              onClick={copyBatchResults}
+              style={{
+                padding: "3px 8px",
+                fontSize: 9,
+                fontWeight: 600,
+                background: "#222",
+                color: "#aaa",
+                border: "1px solid #333",
+                borderRadius: 4,
+                cursor: "pointer",
+              }}
+            >
+              复制全部结果
+            </button>
           </div>
 
           {/* Team composition */}
