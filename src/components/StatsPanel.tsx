@@ -50,6 +50,24 @@ const TABS = [
     color: "#4caf50",
     field: "skillHealing" as const,
   },
+  {
+    key: "physTaken",
+    label: "承物",
+    color: "#ff5722",
+    field: "physicalDamageReceived" as const,
+  },
+  {
+    key: "magTaken",
+    label: "承魔",
+    color: "#7c4dff",
+    field: "magicalDamageReceived" as const,
+  },
+  {
+    key: "pureTaken",
+    label: "承纯",
+    color: "#fff",
+    field: "pureDamageReceived" as const,
+  },
 ];
 const MAX_RANK = 5;
 

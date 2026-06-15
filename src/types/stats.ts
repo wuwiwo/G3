@@ -5,27 +5,33 @@ export interface BattleStats {
   name: string;
   race: Race;
   team: "ally" | "enemy";
-  // Damage
+  // Damage dealt
   totalDamageDealt: number;
-  totalDamageReceived: number;
   autoAttackDamage: number;
   skillDamage: number;
   physicalDamage: number;
   magicalDamage: number;
   pureDamage: number;
+  // Damage received (by type)
+  totalDamageReceived: number;
+  physicalDamageReceived: number;
+  magicalDamageReceived: number;
+  pureDamageReceived: number;
   // Healing
   totalHealingDone: number;
   totalHealingReceived: number;
   lifeStealHealing: number;
   skillHealing: number;
+  // Defense
+  blockCount: number;
+  blockReduced: number;
+  shieldAbsorbed: number;
   // Combat
   kills: number;
   deaths: number;
   skillCasts: number;
   critCount: number;
   critDamage: number;
-  blockCount: number;
-  blockReduced: number;
-  // Survival
+  // Timing
   survivalTime: number;
 }

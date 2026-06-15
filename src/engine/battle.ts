@@ -261,6 +261,9 @@ export function initBattle(
     team: u.team,
     totalDamageDealt: 0,
     totalDamageReceived: 0,
+    physicalDamageReceived: 0,
+    magicalDamageReceived: 0,
+    pureDamageReceived: 0,
     totalHealingDone: 0,
     totalHealingReceived: 0,
     kills: 0,
@@ -277,6 +280,7 @@ export function initBattle(
     blockReduced: 0,
     lifeStealHealing: 0,
     skillHealing: 0,
+    shieldAbsorbed: 0,
     survivalTime: 0,
   }));
 
@@ -629,6 +633,7 @@ function updateAutoAttacks(state: any) {
         addStat(state, unit.id, "autoAttackDamage", result.finalDamage);
         addStat(state, unit.id, "physicalDamage", result.finalDamage);
         addStat(state, target.id, "totalDamageReceived", result.finalDamage);
+        addStat(state, target.id, "physicalDamageReceived", result.finalDamage);
         if (result.finalDamage > 0) {
           unit.lastHitTarget = target.id;
           target.lastHitBy = unit.id;
@@ -1109,6 +1114,16 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
           result.finalDamage
         );
         addStat(state, t.id, "totalDamageReceived", result.finalDamage);
+        addStat(
+          state,
+          t.id,
+          dmgFormula.type === "physical"
+            ? "physicalDamageReceived"
+            : dmgFormula.type === "magical"
+              ? "magicalDamageReceived"
+              : "pureDamageReceived",
+          result.finalDamage
+        );
         if (result.isCrit) {
           addStat(state, caster.id, "critCount", 1);
           addStat(state, caster.id, "critDamage", result.finalDamage);

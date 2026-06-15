@@ -32,6 +32,9 @@ interface UnitAverages {
   lifeStealHealing: number;
   skillHealing: number;
   damageTaken: number;
+  physDmgTaken: number;
+  magDmgTaken: number;
+  pureDmgTaken: number;
   kills: number;
   deaths: number;
   skillCasts: number;
@@ -43,6 +46,9 @@ type SortField = keyof UnitAverages;
 const SORTABLE: { key: SortField; label: string }[] = [
   { key: "totalDamage", label: "输出" },
   { key: "damageTaken", label: "承伤" },
+  { key: "physDmgTaken", label: "承物" },
+  { key: "magDmgTaken", label: "承魔" },
+  { key: "pureDmgTaken", label: "承纯" },
   { key: "totalHealing", label: "治疗" },
   { key: "lifeStealHealing", label: "吸血" },
   { key: "kills", label: "击杀" },
@@ -118,6 +124,13 @@ export const BatchTest: React.FC<Props> = ({
             (existing?.stat.skillHealing ?? 0) + (s.skillHealing || 0),
           damageTaken:
             (existing?.stat.damageTaken ?? 0) + (s.totalDamageReceived || 0),
+          physDmgTaken:
+            (existing?.stat.physDmgTaken ?? 0) +
+            (s.physicalDamageReceived || 0),
+          magDmgTaken:
+            (existing?.stat.magDmgTaken ?? 0) + (s.magicalDamageReceived || 0),
+          pureDmgTaken:
+            (existing?.stat.pureDmgTaken ?? 0) + (s.pureDamageReceived || 0),
           kills: (existing?.stat.kills ?? 0) + (s.kills || 0),
           deaths: (existing?.stat.deaths ?? 0) + (s.deaths || 0),
           skillCasts: (existing?.stat.skillCasts ?? 0) + (s.skillCasts || 0),
@@ -144,6 +157,9 @@ export const BatchTest: React.FC<Props> = ({
         lifeStealHealing: Math.round(stat.lifeStealHealing / runs),
         skillHealing: Math.round(stat.skillHealing / runs),
         damageTaken: Math.round(stat.damageTaken / runs),
+        physDmgTaken: Math.round(stat.physDmgTaken / runs),
+        magDmgTaken: Math.round(stat.magDmgTaken / runs),
+        pureDmgTaken: Math.round(stat.pureDmgTaken / runs),
         kills: Math.round((stat.kills / runs) * 100) / 100,
         deaths: Math.round((stat.deaths / runs) * 100) / 100,
         skillCasts: Math.round((stat.skillCasts / runs) * 100) / 100,
@@ -419,7 +435,10 @@ export const BatchTest: React.FC<Props> = ({
                     </th>
                   ))}
                   <th style={{ padding: "2px 4px", textAlign: "right" }}>
-                    物/魔/纯
+                    伤类(出)
+                  </th>
+                  <th style={{ padding: "2px 4px", textAlign: "right" }}>
+                    伤类(受)
                   </th>
                 </tr>
               </thead>
@@ -495,6 +514,25 @@ export const BatchTest: React.FC<Props> = ({
                         </span>
                         /
                         <span style={{ color: "#fff" }}>{stat.pureDamage}</span>
+                      </td>
+                      <td
+                        style={{
+                          padding: "2px 4px",
+                          textAlign: "right",
+                          fontSize: 9,
+                        }}
+                      >
+                        <span style={{ color: "#ff5722" }}>
+                          {stat.physDmgTaken}
+                        </span>
+                        /
+                        <span style={{ color: "#7c4dff" }}>
+                          {stat.magDmgTaken}
+                        </span>
+                        /
+                        <span style={{ color: "#fff" }}>
+                          {stat.pureDmgTaken}
+                        </span>
                       </td>
                     </tr>
                   );
