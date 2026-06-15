@@ -212,6 +212,21 @@ const App: React.FC = () => {
           borderTop: "1px solid #222",
         }}
       >
+        <div
+          style={{
+            position: "absolute",
+            right: 4,
+            top: -14,
+            fontSize: 8,
+            color: "#444",
+            background: "#111",
+            padding: "0 4px",
+            borderTopLeftRadius: 3,
+            borderTopRightRadius: 3,
+          }}
+        >
+          v1.8.1
+        </div>
         <button
           onClick={() => setPage("setup")}
           style={tabStyle(page === "setup")}

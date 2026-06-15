@@ -415,40 +415,57 @@ function TeamPanel({
                     padding: "1px 0 2px 3px",
                   }}
                 >
-                  {rr.chars.map((ch) => (
-                    <div key={ch.id} style={{ display: "flex", gap: 1 }}>
-                      <div
-                        onClick={() => setSel(ch.id)}
-                        style={{
-                          padding: "2px 5px",
-                          fontSize: 9,
-                          whiteSpace: "nowrap",
-                          background: sel === ch.id ? "#4caf50" : "#1a1a2e",
-                          border: `1px solid ${sel === ch.id ? "#4caf50" : "#444"}`,
-                          borderRadius: "3px 0 0 3px",
-                          color: sel === ch.id ? "#000" : "#ccc",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {ch.name}
+                  {rr.chars.map((ch) => {
+                    const isPlaced = grid.some((s) => s.charId === ch.id);
+                    return (
+                      <div key={ch.id} style={{ display: "flex", gap: 1 }}>
+                        <div
+                          onClick={() => {
+                            if (!isPlaced) setSel(ch.id);
+                          }}
+                          style={{
+                            padding: "2px 5px",
+                            fontSize: 9,
+                            whiteSpace: "nowrap",
+                            background:
+                              sel === ch.id
+                                ? "#4caf50"
+                                : isPlaced
+                                  ? "#2a2a2a"
+                                  : "#1a1a2e",
+                            border: `1px solid ${sel === ch.id ? "#4caf50" : isPlaced ? "#555" : "#444"}`,
+                            borderRadius: "3px 0 0 3px",
+                            color:
+                              sel === ch.id
+                                ? "#000"
+                                : isPlaced
+                                  ? "#666"
+                                  : "#ccc",
+                            cursor: isPlaced ? "not-allowed" : "pointer",
+                            opacity: isPlaced && sel !== ch.id ? 0.5 : 1,
+                          }}
+                        >
+                          {ch.name}
+                          {isPlaced ? " ✓" : ""}
+                        </div>
+                        <div
+                          onClick={() => setDetail(ch)}
+                          style={{
+                            padding: "2px 5px",
+                            fontSize: 9,
+                            background: "#222",
+                            border: "1px solid #444",
+                            borderLeft: "none",
+                            borderRadius: "0 3px 3px 0",
+                            color: "#888",
+                            cursor: "pointer",
+                          }}
+                        >
+                          👁
+                        </div>
                       </div>
-                      <div
-                        onClick={() => setDetail(ch)}
-                        style={{
-                          padding: "2px 5px",
-                          fontSize: 9,
-                          background: "#222",
-                          border: "1px solid #444",
-                          borderLeft: "none",
-                          borderRadius: "0 3px 3px 0",
-                          color: "#888",
-                          cursor: "pointer",
-                        }}
-                      >
-                        👁
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -545,7 +562,7 @@ function TeamPanel({
         <div
           style={{
             marginBottom: 4,
-            padding: 4,
+            padding: 6,
             background: "#1a1a2e",
             borderRadius: 6,
             border: "1px solid #ff9800",
@@ -555,69 +572,50 @@ function TeamPanel({
             style={{
               fontSize: 9,
               color: "#ff9800",
-              marginBottom: 2,
+              marginBottom: 4,
               fontWeight: 600,
             }}
           >
-            装备区 — 点击角色格切换装备（最多6件）
+            装备区 — 点击已有角色的格子→选择装备（最多6件）
           </div>
           <div
             style={{
               display: "flex",
               gap: 3,
               flexWrap: "wrap",
-              maxHeight: 80,
+              maxHeight: 100,
               overflowY: "auto",
             }}
           >
             {ALL_EQUIPMENT.map((eq) => {
-              const used = grid.some((s) => s.equipmentId === eq.id);
-              const usedCount = grid.filter(
-                (s) => s.equipmentId === eq.id
-              ).length;
+              const usedBy = grid.findIndex((s) => s.equipmentId === eq.id);
               return (
                 <div
                   key={eq.id}
-                  onClick={() => {
-                    // Find first slot without equipment or toggle off
-                    if (usedCount > 0) {
-                      const idx = grid.findIndex(
-                        (s) => s.equipmentId === eq.id
-                      );
-                      if (idx >= 0) {
-                        const ng = grid.map((s) => ({ ...s }));
-                        ng[idx] = { ...ng[idx], equipmentId: null };
-                        setGrid(ng);
-                        emit(ng);
-                      }
-                    } else {
-                      const idx = grid.findIndex(
-                        (s) => s.charId && !s.equipmentId
-                      );
-                      if (idx >= 0) {
-                        const ng = grid.map((s) => ({ ...s }));
-                        ng[idx] = { ...ng[idx], equipmentId: eq.id };
-                        setGrid(ng);
-                        emit(ng);
-                      }
-                    }
-                  }}
                   style={{
                     fontSize: 8,
-                    padding: "2px 5px",
+                    padding: "2px 6px",
                     borderRadius: 3,
-                    cursor: "pointer",
-                    background: usedCount > 0 ? "#ff9800" : "#222",
-                    color: usedCount > 0 ? "#000" : "#aaa",
+                    background: usedBy >= 0 ? "#ff9800" : "#222",
+                    color: usedBy >= 0 ? "#000" : "#aaa",
                     border:
-                      usedCount > 0 ? "1px solid #ff9800" : "1px solid #444",
+                      usedBy >= 0 ? "1px solid #ff9800" : "1px solid #444",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 3,
                   }}
                 >
-                  {EQ_ICONS[eq.id] || "🎒"} {eq.name}
-                  {usedCount > 0 ? `×${usedCount}` : ""}
+                  <span>{EQ_ICONS[eq.id] || "🎒"}</span>
+                  <span>{eq.name}</span>
+                  <span style={{ fontSize: 7, color: "#666" }}>
+                    {usedBy >= 0 ? `格${usedBy + 1}` : "空闲"}
+                  </span>
                 </div>
               );
             })}
+          </div>
+          <div style={{ fontSize: 8, color: "#555", marginTop: 3 }}>
+            右键装备→移除 · 已用{grid.filter((s) => s.equipmentId).length}/6
           </div>
         </div>
       )}

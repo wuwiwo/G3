@@ -36,13 +36,17 @@ function unitPos(
       ? [Row.Back, Row.Mid, Row.Front]
       : [Row.Front, Row.Mid, Row.Back];
   const r = layoutRows.indexOf(u.row);
-  return { r, c: u.col, y: r * 80 + 40 };
+  // Approximate position in the battlefield: row (0-2) × cell height + half height
+  return { r, c: u.col, y: r * 78 + 38 };
 }
 
 /** Get target unit on the other side, or null */
 function getTarget(battle: BattleState, u: ArenaUnit): ArenaUnit | null {
   if (!u.lastHitTarget) return null;
-  return battle.units.find((x) => x.id === u.lastHitTarget) || null;
+  // Check both current and last hit target - the target might have moved
+  const target = battle.units.find((x) => x.id === u.lastHitTarget);
+  if (target && !target.isDead) return target;
+  return null;
 }
 
 const BattleField: React.FC<Props> = ({
@@ -77,7 +81,7 @@ const BattleField: React.FC<Props> = ({
   const bonds = battle.bonds?.[side] || [];
   const now = battle.time;
 
-  // Find active attackers (recent attacks within 1s) and their targets
+  // Find active attackers (recent attacks within 0.8s) and their targets
   const arrowLines = useMemo(() => {
     const lines: {
       x1: number;
@@ -86,20 +90,37 @@ const BattleField: React.FC<Props> = ({
       y2: number;
       color: string;
     }[] = [];
+    if (now <= 0) return lines;
+    // Field dimensions: ally is left side, enemy is right side
+    // Each cell is roughly 60px wide x 76px tall
+    // The field has 3 rows with labels (~26px on left per row)
     for (const u of battle.units) {
       if (u.team !== side) continue;
-      if (!u.lastAction?.time || now - u.lastAction.time > 1) continue;
+      if (!u.lastAction?.time || now - u.lastAction.time > 0.8) continue;
       const target = getTarget(battle, u);
       if (!target || target.team === side) continue;
-      // Both positions are on field; compute approximate arrow endpoints
-      const src = unitPos(u, side);
-      const dst = unitPos(target, target.team);
-      // Approximate: offset by column and side
+      // Compute positions relative to this field
+      // Source position (within this field)
+      const srcR =
+        side === "ally"
+          ? [Row.Back, Row.Mid, Row.Front].indexOf(u.row)
+          : [Row.Front, Row.Mid, Row.Back].indexOf(u.row);
+      const x1 = 26 + u.col * 60 + 30;
+      const y1 = srcR * 78 + 38;
+      // Target position (need to add field offset - ~340px gap between fields)
+      const dstR =
+        target.team === "ally"
+          ? [Row.Back, Row.Mid, Row.Front].indexOf(target.row)
+          : [Row.Front, Row.Mid, Row.Back].indexOf(target.row);
+      // The other field is ~340px to the right (ally field) or left (enemy field)
+      const fieldGap = side === "ally" ? 340 : -340;
+      const x2 = 26 + target.col * 60 + 30 + fieldGap;
+      const y2 = dstR * 78 + 38;
       lines.push({
-        x1: src.c * 60 + 30,
-        y1: src.y,
-        x2: side === "ally" ? 340 + dst.c * 60 + 30 : dst.c * 60 + 30,
-        y2: 140 + dst.y,
+        x1,
+        y1,
+        x2,
+        y2,
         color: u.team === "ally" ? "#4fc3f7" : "#ef5350",
       });
     }

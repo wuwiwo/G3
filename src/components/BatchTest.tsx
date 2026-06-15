@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { initBattle, processTick } from "../engine/battle";
+import { CHARACTER_MAP } from "../data/characters";
 import type { BattleState } from "../types";
 import type { BattleStats } from "../types/stats";
 
@@ -38,6 +39,27 @@ interface UnitAverages {
   appearanceCount: number;
 }
 
+type SortField = keyof UnitAverages;
+const SORTABLE: { key: SortField; label: string }[] = [
+  { key: "totalDamage", label: "输出" },
+  { key: "damageTaken", label: "承伤" },
+  { key: "totalHealing", label: "治疗" },
+  { key: "lifeStealHealing", label: "吸血" },
+  { key: "kills", label: "击杀" },
+  { key: "deaths", label: "死亡" },
+  { key: "survivalTime", label: "存活" },
+  { key: "skillCasts", label: "技能" },
+];
+
+const RC: Record<string, string> = {
+  beast: "#8d6e63",
+  hunter: "#4caf50",
+  warrior: "#f44336",
+  mage: "#2196f3",
+  undead: "#9c27b0",
+  dragon: "#ff9800",
+};
+
 export const BatchTest: React.FC<Props> = ({
   allyTeam,
   enemyTeam,
@@ -46,6 +68,8 @@ export const BatchTest: React.FC<Props> = ({
   const [runs, setRuns] = useState(50);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [sortField, setSortField] = useState<SortField>("totalDamage");
+  const [sortAsc, setSortAsc] = useState(false);
   const [results, setResults] = useState<{
     allyWins: number;
     enemyWins: number;
@@ -135,11 +159,17 @@ export const BatchTest: React.FC<Props> = ({
     setRunning(false);
   }, [allyTeam, enemyTeam, runs]);
 
-  const unitList = results
-    ? [...results.unitStats.entries()].sort(
-        (a, b) => b[1].totalDamage - a[1].totalDamage
-      )
-    : [];
+  const unitList = useMemo(() => {
+    if (!results) return [];
+    const dir = sortAsc ? 1 : -1;
+    return [...results.unitStats.entries()].sort((a, b) => {
+      const va = a[1][sortField] ?? 0;
+      const vb = b[1][sortField] ?? 0;
+      return typeof va === "number" && typeof vb === "number"
+        ? (va - vb) * dir
+        : 0;
+    });
+  }, [results, sortField, sortAsc]);
 
   const allyWinRate = results
     ? ((results.allyWins / runs) * 100).toFixed(1)
@@ -286,9 +316,63 @@ export const BatchTest: React.FC<Props> = ({
             </div>
           </div>
 
+          {/* Team composition */}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginBottom: 6,
+              padding: 6,
+              background: "#111",
+              borderRadius: 6,
+              fontSize: 10,
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div
+                style={{ color: "#4fc3f7", fontWeight: 600, marginBottom: 2 }}
+              >
+                我方
+              </div>
+              {allyTeam.map((u) => {
+                const ch = CHARACTER_MAP.get(u.charId);
+                if (!ch) return null;
+                return (
+                  <div
+                    key={u.charId}
+                    style={{ color: "#ccc", padding: "1px 0" }}
+                  >
+                    <span style={{ color: RC[ch.race] || "#888" }}>■</span>{" "}
+                    {ch.name}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div
+                style={{ color: "#ef5350", fontWeight: 600, marginBottom: 2 }}
+              >
+                敌方
+              </div>
+              {enemyTeam.map((u) => {
+                const ch = CHARACTER_MAP.get(u.charId);
+                if (!ch) return null;
+                return (
+                  <div
+                    key={u.charId}
+                    style={{ color: "#999", padding: "1px 0" }}
+                  >
+                    <span style={{ color: RC[ch.race] || "#888" }}>■</span>{" "}
+                    {ch.name}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Per-unit stats */}
           <div style={{ fontSize: 11, color: "#aaa", marginBottom: 4 }}>
-            场均角色统计（按输出排序）：
+            场均角色统计（点击列头排序）：
           </div>
           <div
             style={{
@@ -311,37 +395,37 @@ export const BatchTest: React.FC<Props> = ({
                   <th style={{ padding: "2px 4px", textAlign: "left" }}>
                     角色
                   </th>
-                  <th style={{ padding: "2px 4px", textAlign: "right" }}>
-                    输出
-                  </th>
+                  {SORTABLE.map((s) => (
+                    <th
+                      key={s.key}
+                      onClick={() => {
+                        if (sortField === s.key) setSortAsc(!sortAsc);
+                        else {
+                          setSortField(s.key);
+                          setSortAsc(false);
+                        }
+                      }}
+                      style={{
+                        padding: "2px 4px",
+                        textAlign: "right",
+                        cursor: "pointer",
+                        color: sortField === s.key ? "#4a9eff" : "#666",
+                        fontWeight: sortField === s.key ? 700 : 400,
+                        userSelect: "none",
+                      }}
+                    >
+                      {s.label}
+                      {sortField === s.key ? (sortAsc ? " ▲" : " ▼") : ""}
+                    </th>
+                  ))}
                   <th style={{ padding: "2px 4px", textAlign: "right" }}>
                     物/魔/纯
-                  </th>
-                  <th style={{ padding: "2px 4px", textAlign: "right" }}>
-                    承伤
-                  </th>
-                  <th style={{ padding: "2px 4px", textAlign: "right" }}>
-                    治疗/吸血
-                  </th>
-                  <th style={{ padding: "2px 4px", textAlign: "right" }}>
-                    击杀/死亡
-                  </th>
-                  <th style={{ padding: "2px 4px", textAlign: "right" }}>
-                    存活
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {unitList.map(([id, stat]) => {
-                  const rc =
-                    {
-                      beast: "#8d6e63",
-                      hunter: "#4caf50",
-                      warrior: "#f44336",
-                      mage: "#2196f3",
-                      undead: "#9c27b0",
-                      dragon: "#ff9800",
-                    }[stat.race] || "#888";
+                  const rc = RC[stat.race] || "#888";
                   return (
                     <tr
                       key={id}
@@ -362,16 +446,39 @@ export const BatchTest: React.FC<Props> = ({
                         </span>
                         {stat.name}
                       </td>
-                      <td
-                        style={{
-                          padding: "2px 4px",
-                          textAlign: "right",
-                          fontWeight: 600,
-                          color: "#f44336",
-                        }}
-                      >
-                        {stat.totalDamage.toLocaleString()}
-                      </td>
+                      {SORTABLE.map((s) => (
+                        <td
+                          key={s.key}
+                          style={{
+                            padding: "2px 4px",
+                            textAlign: "right",
+                            fontWeight: s.key === "totalDamage" ? 600 : 400,
+                            color:
+                              s.key === "totalDamage"
+                                ? "#f44336"
+                                : s.key === "damageTaken"
+                                  ? "#ff9800"
+                                  : s.key === "totalHealing" ||
+                                      s.key === "skillHealing"
+                                    ? "#4caf50"
+                                    : s.key === "lifeStealHealing"
+                                      ? "#e91e63"
+                                      : s.key === "kills"
+                                        ? "#4caf50"
+                                        : s.key === "deaths"
+                                          ? "#f44336"
+                                          : "#888",
+                            fontSize: s.key === "skillCasts" ? 9 : 10,
+                          }}
+                        >
+                          {typeof stat[s.key] === "number"
+                            ? (stat[s.key] as number) > 100
+                              ? (stat[s.key] as number).toLocaleString()
+                              : (stat[s.key] as number).toFixed(1)
+                            : stat[s.key]}
+                          {s.key === "survivalTime" ? "s" : ""}
+                        </td>
+                      ))}
                       <td
                         style={{
                           padding: "2px 4px",
@@ -388,48 +495,6 @@ export const BatchTest: React.FC<Props> = ({
                         </span>
                         /
                         <span style={{ color: "#fff" }}>{stat.pureDamage}</span>
-                      </td>
-                      <td
-                        style={{
-                          padding: "2px 4px",
-                          textAlign: "right",
-                          color: "#ff9800",
-                        }}
-                      >
-                        {stat.damageTaken.toLocaleString()}
-                      </td>
-                      <td
-                        style={{
-                          padding: "2px 4px",
-                          textAlign: "right",
-                          fontSize: 9,
-                        }}
-                      >
-                        <span style={{ color: "#4caf50" }}>
-                          {stat.totalHealing}
-                        </span>
-                        /
-                        <span style={{ color: "#e91e63" }}>
-                          {stat.lifeStealHealing}
-                        </span>
-                      </td>
-                      <td style={{ padding: "2px 4px", textAlign: "right" }}>
-                        <span style={{ color: "#4caf50" }}>
-                          {stat.kills.toFixed(1)}
-                        </span>
-                        /
-                        <span style={{ color: "#f44336" }}>
-                          {stat.deaths.toFixed(1)}
-                        </span>
-                      </td>
-                      <td
-                        style={{
-                          padding: "2px 4px",
-                          textAlign: "right",
-                          color: "#888",
-                        }}
-                      >
-                        {stat.survivalTime.toFixed(1)}s
                       </td>
                     </tr>
                   );
