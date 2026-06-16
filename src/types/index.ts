@@ -160,6 +160,7 @@ export interface ArenaUnit {
   critDamage?: number;
   blockRate?: number;
   tenacity?: number;
+  attackSpeedBonus?: number;
   damageReduction?: number;
   skillPower?: number;
   reflectDamage?: number;
@@ -182,6 +183,7 @@ export interface ArenaUnit {
   _bslrSlowStack?: number;
   _dxmCastCount?: number;
   _bsxlFreezeCount?: number;
+  _attackCount?: number;
   _trapDamage?: { casterAtk: number; casterId: string };
   _delayedDamage?: { amount: number; expireTime: number }[];
   // Equipment (v1.8)

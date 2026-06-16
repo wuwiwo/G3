@@ -720,7 +720,49 @@ function updateAutoAttacks(state: any) {
           }
         }
       }
-      unit.attackTimer = unit.def.stats.attackInterval;
+      // v2.0: attack speed formula - actual = base * (1 - bonus% * 0.5), cap at 100% bonus
+      const asBonus = Math.min(unit.attackSpeedBonus || 0, 1);
+      unit.attackTimer = unit.def.stats.attackInterval * (1 - asBonus * 0.5);
+      // Reset attack counter and check hunter extra target
+      unit._attackCount = (unit._attackCount || 0) + 1;
+      const hunterCnt = state.units.filter(
+        (u: any) => u.team === unit.team && !u.isDead && u.def.race === "hunter"
+      ).length;
+      if (hunterCnt >= 3 && unit.def.race === "hunter") {
+        const extraEvery = hunterCnt >= 4 ? 3 : 5;
+        if (unit._attackCount % extraEvery === 0) {
+          const extraEnemies = getEnemies(state, unit.team).filter(
+            (e: any) => !targets.some((t: any) => t?.id === e.id)
+          );
+          if (extraEnemies.length > 0) {
+            const extraTarget =
+              extraEnemies[Math.floor(Math.random() * extraEnemies.length)];
+            if (extraTarget) {
+              const eresult = calcDamage(
+                unit,
+                extraTarget,
+                1,
+                DamageType.Physical,
+                {
+                  evasion: extraTarget.evasion,
+                  hitRateMod: unit.hitRateMod,
+                }
+              );
+              deferDamage(extraTarget, eresult.finalDamage, state);
+              extraTarget.currentHp -= eresult.finalDamage;
+              addStat(state, unit.id, "totalDamageDealt", eresult.finalDamage);
+              addStat(state, unit.id, "autoAttackDamage", eresult.finalDamage);
+              addStat(state, unit.id, "physicalDamage", eresult.finalDamage);
+              addStat(
+                state,
+                extraTarget.id,
+                "totalDamageReceived",
+                eresult.finalDamage
+              );
+            }
+          }
+        }
+      }
     }
   }
 }
