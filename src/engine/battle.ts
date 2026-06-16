@@ -268,6 +268,11 @@ export function initBattle(
       if (s.critDamage) u.critDamage = (u.critDamage || 0) + s.critDamage / 100;
       if (s.hitRate) u.hitRateMod = (u.hitRateMod || 0) + s.hitRate / 100;
       if (s.lifeSteal) u.lifeSteal = (u.lifeSteal || 0) + s.lifeSteal / 100;
+      if (s.attackSpeedPercent)
+        u.attackSpeedBonus =
+          (u.attackSpeedBonus || 0) + s.attackSpeedPercent / 100;
+      if (s.evasionPercent)
+        u.evasion = (u.evasion || 0) + s.evasionPercent / 100;
     }
   };
   applyEquip(allies);
@@ -448,6 +453,7 @@ export function processTick(state: any): any {
   updateDeaths(state);
   updateRevivals(state);
   updateWarriorBonds(state);
+  updateEquipment(state);
   updateVictory(state);
   updateBonds(state);
   trimLog(state);
@@ -640,6 +646,19 @@ function updateAutoAttacks(state: any) {
           result.finalDamage,
           "physical"
         );
+        // 金箍棒: 攻击40%附加自身攻击×20%魔法伤害
+        if (
+          unit.equipmentId === "golden_staff" &&
+          result.finalDamage > 0 &&
+          Math.random() < 0.4
+        ) {
+          const bonusDmg = Math.floor(unit.currentAttack * 0.2);
+          target.currentHp -= bonusDmg;
+          addStat(state, unit.id, "totalDamageDealt", bonusDmg);
+          addStat(state, unit.id, "magicalDamage", bonusDmg);
+          addStat(state, target.id, "totalDamageReceived", bonusDmg);
+          addStat(state, target.id, "magicalDamageReceived", bonusDmg);
+        }
         // Set interrupt flags on target
         target._wasHitDuringCast = true;
         target._wasDamagedDuringCast = true;
@@ -933,6 +952,42 @@ function updateWarriorBonds(state: any) {
         addStat(state, u.id, "totalHealingDone", heal);
         addStat(state, u.id, "skillHealing", heal);
       }
+    }
+  }
+}
+
+function updateEquipment(state: any) {
+  // 缩小护镜: 15s后破坏
+  if (state.time >= 15) {
+    for (const u of state.units) {
+      if (u.equipmentId === "dwarf_goggles" && !u.isDead) {
+        u.equipmentId = undefined;
+        u.evasion = Math.max(0, (u.evasion || 0) - 0.15);
+      }
+    }
+  }
+  // 瞩目头饰: HP<60%时触发+破坏
+  for (const u of state.units) {
+    if (
+      u.equipmentId === "attention_hat" &&
+      !u.isDead &&
+      !u._attentionTriggered &&
+      u.currentHp / u.maxHp < 0.6
+    ) {
+      u._attentionTriggered = true;
+      const lostHp = u.maxHp - u.currentHp;
+      for (const ally of state.units.filter(
+        (x: any) => x.team === u.team && x.id !== u.id && !x.isDead
+      )) {
+        const heal = Math.floor(lostHp * 0.1);
+        ally.currentHp = Math.min(ally.maxHp, ally.currentHp + heal);
+      }
+      u.equipmentId = undefined;
+      state.battleLog.push({
+        time: state.time,
+        text: `🎯 ${u.def.name} 瞩目头饰触发: 友方恢复${Math.floor(lostHp * 0.1)}HP`,
+        type: "system",
+      });
     }
   }
 }

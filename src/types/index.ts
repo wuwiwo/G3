@@ -184,6 +184,7 @@ export interface ArenaUnit {
   _dxmCastCount?: number;
   _bsxlFreezeCount?: number;
   _attackCount?: number;
+  _attentionTriggered?: boolean;
   _trapDamage?: { casterAtk: number; casterId: string };
   _delayedDamage?: { amount: number; expireTime: number }[];
   // Equipment (v1.8)
@@ -272,6 +273,8 @@ export interface Equipment {
     critDamage?: number;
     hitRate?: number;
     lifeSteal?: number;
+    attackSpeedPercent?: number;
+    evasionPercent?: number;
   };
   tags?: string[];
 }
