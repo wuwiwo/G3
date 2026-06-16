@@ -9,7 +9,7 @@ import { BatchTest } from "./components/BatchTest";
 import { useBattle } from "./hooks/useBattleState";
 import { ArenaUnit } from "./types";
 
-const VERSION = "v1.8.3";
+const VERSION = "v2.0";
 
 const App: React.FC = () => {
   const { state, startBattle, reset, speed } = useBattle();
