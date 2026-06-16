@@ -4,6 +4,8 @@ export interface BondEffect {
   attackBonus: number;
   defenseBonus: number;
   hpBonus: number;
+  hitRateBonus: number;
+  evasionBonus: number;
   special?: string;
 }
 
@@ -16,45 +18,57 @@ interface TierData {
 const BASE_BONDS: Record<Race, TierData> = {
   [Race.Beast]: {
     2: { attackBonus: 10, defenseBonus: 5 },
-    3: { attackBonus: 15, defenseBonus: 10, special: "吸血15%+5%攻击纯粹伤害" },
+    3: {
+      attackBonus: 15,
+      defenseBonus: 10,
+      special: "韧性+10%+对<50%HP敌人5%攻击纯粹伤害",
+    },
     4: {
       attackBonus: 25,
       defenseBonus: 20,
-      special: "吸血30%+10%攻击纯粹伤害",
+      special: "韧性+35%+对<50%HP敌人10%攻击纯粹伤害",
     },
   },
   [Race.Hunter]: {
-    2: { attackBonus: 15 },
-    3: { attackBonus: 20, special: "反击75%伤害" },
-    4: { attackBonus: 40, special: "反击100%无视防御" },
+    2: { attackBonus: 5, hitRateBonus: 10 },
+    3: {
+      attackBonus: 10,
+      hitRateBonus: 20,
+      special: "反击75%伤害+每5次攻击额外1目标",
+    },
+    4: {
+      attackBonus: 20,
+      hitRateBonus: 40,
+      special: "反击100%无视防御+每3次攻击额外1目标",
+    },
   },
   [Race.Warrior]: {
-    2: { hpBonus: 20 },
-    3: { hpBonus: 30, special: "每5s恢复4%HP+10%吸血" },
-    4: { hpBonus: 50, special: "每5s恢复8%HP+20%吸血" },
+    2: { hpBonus: 15 },
+    3: { hpBonus: 25, special: "每12s恢复4%HP+15%吸血" },
+    4: { hpBonus: 40, special: "每12s恢复8%HP+25%吸血" },
   },
   [Race.Mage]: {
     2: { special: "-20%魔防" },
-    3: { special: "-35%魔防+10%吸血" },
-    4: { special: "-50%魔防+25%吸血" },
+    3: { special: "-35%魔防+15%技能吸血" },
+    4: { special: "-50%魔防+30%技能吸血" },
   },
   [Race.Undead]: {
-    2: { attackBonus: 5, defenseBonus: 5 },
+    2: { attackBonus: 5, evasionBonus: 5 },
     3: {
       attackBonus: 10,
-      defenseBonus: 10,
-      special: "复活13s+扣25%+每秒6%HP/8s+无敌1s",
+      evasionBonus: 15,
+      special: "复活13s+每秒6%HP/8s+无敌1s",
     },
     4: {
-      attackBonus: 15,
-      defenseBonus: 15,
-      special: "复活7s+扣10%+每秒7%HP/10s+无敌3s",
+      attackBonus: 20,
+      evasionBonus: 30,
+      special: "复活7s+每秒7%HP/10s+无敌3s",
     },
   },
   [Race.Dragon]: {
     2: {},
-    3: { special: "CD-30%+减伤20%6s" },
-    4: { special: "CD-80%+减伤40%10s" },
+    3: { special: "CD-30%+减伤5%+开局3倍减伤6s" },
+    4: { special: "CD-80%+减伤10%+开局4倍减伤10s" },
   },
 };
 
@@ -80,6 +94,8 @@ export function getBondAtTier(race: Race, count: number): BondEffect {
     attackBonus: ov.attackBonus ?? tier.attackBonus ?? 0,
     defenseBonus: ov.defenseBonus ?? tier.defenseBonus ?? 0,
     hpBonus: ov.hpBonus ?? tier.hpBonus ?? 0,
+    hitRateBonus: ov.hitRateBonus ?? tier.hitRateBonus ?? 0,
+    evasionBonus: ov.evasionBonus ?? tier.evasionBonus ?? 0,
     special: ov.special ?? tier.special,
   };
 }

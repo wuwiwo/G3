@@ -191,26 +191,40 @@ export function initBattle(
             u.maxHp = Math.floor(u.maxHp * mult);
             u.currentHp = Math.floor(u.currentHp * mult);
           }
-        }
-      }
-      // Dragon: starting cooldown reduction + damage reduction
-      if (race === "dragon") {
-        const cdMult = count >= 4 ? 0.2 : 0.7; // 80% or 30% reduction
-        const drVal = count >= 4 ? 0.6 : 0.8; // 40% or 20% reduction
-        const drDuration = count >= 4 ? 10 : 6;
-        for (const u of us) {
-          if (u.def.race === "dragon") {
-            u.cooldownRemaining *= cdMult;
-            u.statuses.push({
-              type: StatusType.Inspire,
-              remainingSeconds: drDuration,
-              stacks: 1,
-              value: drVal,
-            });
+          // v2.0: hunter bond hit rate
+          if (effect.hitRateBonus) {
+            u.hitRateMod = (u.hitRateMod || 0) + effect.hitRateBonus / 100;
+          }
+          // v2.0: undead bond evasion (replaces defense)
+          if (effect.evasionBonus) {
+            u.evasion = (u.evasion || 0) + effect.evasionBonus / 100;
           }
         }
       }
-      // Beast bond: tenacity (v2.0 replaces lifesteal)
+      // Dragon v2.0: base 5%/10% DR + opening 3x/4x multiplier
+      if (race === "dragon") {
+        const cdMult = count >= 4 ? 0.2 : 0.7;
+        const baseDr = count >= 4 ? 0.1 : 0.05; // 常驻5%/10%减伤
+        const openMult = count >= 4 ? 4 : 3; // 开局倍率
+        const openDur = count >= 4 ? 10 : 6;
+        const openDr = baseDr * openMult; // 开局期间总减伤
+        for (const u of us) {
+          if (u.def.race === "dragon") {
+            u.cooldownRemaining *= cdMult;
+            // Apply opening damage reduction as Inspire (high value for first N seconds)
+            u.statuses.push({
+              type: StatusType.Inspire,
+              remainingSeconds: openDur,
+              stacks: 1,
+              value: 1 - openDr, // e.g. 0.85 for 15% DR (3x5%)
+            });
+            // For post-opening: need to keep base Dr after Inspire expires
+            // For simplicity, apply base Dr as permanent reduction via damageReduction
+            u.damageReduction = (u.damageReduction || 0) + baseDr;
+          }
+        }
+      }
+      // Beast bond: tenacity (v2.0)
       if (race === "beast") {
         const tenacityVal = count >= 4 ? 35 : count >= 3 ? 10 : 0;
         if (tenacityVal > 0) {
@@ -727,6 +741,23 @@ function updateDeaths(state: any) {
         type: "status",
       });
     }
+    // 食人魔魔法师天赋：友方阵亡→+8%最大HP上限+回10%HP
+    for (const srm of state.units.filter(
+      (x: any) =>
+        x.def.id === "srm" && x.team === u.team && !x.isDead && !isRuined(x)
+    )) {
+      const hpBonus = Math.floor(srm.maxHp * 0.08);
+      srm.maxHp += hpBonus;
+      srm.currentHp = Math.min(
+        srm.maxHp,
+        srm.currentHp + Math.floor(srm.maxHp * 0.1)
+      );
+      state.battleLog.push({
+        time: state.time,
+        text: `🔥 ${srm.def.name} 天赋触发: 最大HP+${hpBonus}+恢复10%HP`,
+        type: "status",
+      });
+    }
     // Credit kill to last attacker
     if (u.lastHitBy) addStat(state, u.lastHitBy, "kills", 1);
     state.battleLog.push({
@@ -840,13 +871,13 @@ function updateWarriorBonds(state: any) {
       (x: any) => x.team === u.team && !x.isDead && x.def.race === "warrior"
     ).length;
     if (wCnt >= 4) {
-      u.lifeSteal = Math.max(u.lifeSteal || 0, 0.2);
+      u.lifeSteal = Math.max(u.lifeSteal || 0, 0.25);
     } else if (wCnt >= 3) {
-      u.lifeSteal = Math.max(u.lifeSteal || 0, 0.1);
+      u.lifeSteal = Math.max(u.lifeSteal || 0, 0.15);
     }
   }
-  // Every 5s: heal warriors by % of max HP
-  if (state._warriorTimer >= 5) {
+  // Every 12s: heal warriors by % of max HP (v2.0: 12s)
+  if (state._warriorTimer >= 12) {
     state._warriorTimer = 0;
     for (const u of getAlive(state)) {
       if (u.def.race !== "warrior") continue;
@@ -1081,7 +1112,7 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         ).length;
         const mageMdefMult =
           mageCnt >= 4 ? 0.5 : mageCnt >= 3 ? 0.65 : mageCnt >= 2 ? 0.8 : 1;
-        const mageLsPct = mageCnt >= 4 ? 0.25 : mageCnt >= 3 ? 0.1 : 0;
+        const mageLsPct = mageCnt >= 4 ? 0.3 : mageCnt >= 3 ? 0.15 : 0;
         const origMdef = t.currentMagicalDef;
         if (mageMdefMult < 1 && dmgFormula.type === "magical")
           t.currentMagicalDef = Math.floor(t.currentMagicalDef * mageMdefMult);

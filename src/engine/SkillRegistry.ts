@@ -79,6 +79,68 @@ registerSkillHandler("lyz_heal", (caster, state, log, targets) => {
   }
 });
 
+// 食人魔魔法师 — 火焰爆轰(消耗HP+多重施法)
+registerSkillHandler("srm_fire", (caster, state, log) => {
+  const enemies = state.units.filter(
+    (u: any) => u.team !== caster.team && !u.isDead
+  );
+  if (enemies.length === 0) return;
+  // 消耗5%当前生命值
+  const cost = Math.floor(caster.currentHp * 0.05);
+  caster.currentHp -= cost;
+  // 主目标
+  const target = enemies[Math.floor(Math.random() * enemies.length)];
+  const result = calcDamage(caster, target, 1.6, DamageType.Magical, {
+    isSkill: true,
+  });
+  target.currentHp -= result.finalDamage;
+  target.statuses.push({
+    type: StatusType.Stun,
+    remainingSeconds: 0.5,
+    stacks: 1,
+  });
+  target.lastDamage = {
+    value: result.finalDamage,
+    time: state.time,
+    type: "magical",
+  };
+  target.lastHitBy = caster.id;
+  addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
+  addStat(state, caster.id, "skillDamage", result.finalDamage);
+  addStat(state, caster.id, "magicalDamage", result.finalDamage);
+  addStat(state, target.id, "totalDamageReceived", result.finalDamage);
+  log.push({
+    time: state.time,
+    text: `🔥 ${caster.def.name} 火焰爆轰 ${target.def.name}: ${result.finalDamage}💥`,
+    type: "damage",
+  });
+  // 多重施法: 40%触发2次, 20%触发3次
+  const nCasts = Math.random() < 0.4 ? 2 : Math.random() < 0.2 ? 3 : 1;
+  for (let i = 1; i < nCasts; i++) {
+    const t2 = enemies.filter((u: any) => u.id !== target.id);
+    if (t2.length === 0) break;
+    const extraTarget = t2[Math.floor(Math.random() * t2.length)];
+    const r2 = calcDamage(caster, extraTarget, 1.6, DamageType.Magical, {
+      isSkill: true,
+    });
+    extraTarget.currentHp -= r2.finalDamage;
+    extraTarget.statuses.push({
+      type: StatusType.Stun,
+      remainingSeconds: 0.5,
+      stacks: 1,
+    });
+    addStat(state, caster.id, "totalDamageDealt", r2.finalDamage);
+    addStat(state, caster.id, "skillDamage", r2.finalDamage);
+    addStat(state, caster.id, "magicalDamage", r2.finalDamage);
+    addStat(state, extraTarget.id, "totalDamageReceived", r2.finalDamage);
+    log.push({
+      time: state.time,
+      text: `🔥 ${caster.def.name} 额外火焰爆轰#${i + 1} ${extraTarget.def.name}: ${r2.finalDamage}💥`,
+      type: "damage",
+    });
+  }
+});
+
 // 小精灵 — 链接
 registerSkillHandler("xjl_link", (caster, state, log) => {
   const allies = state.units.filter(
@@ -687,7 +749,7 @@ function applyMageLifeSteal(
   const mageCnt = state.units.filter(
     (u: any) => u.team === caster.team && !u.isDead && u.def.race === "mage"
   ).length;
-  const lsPct = mageCnt >= 4 ? 0.25 : mageCnt >= 3 ? 0.1 : 0;
+  const lsPct = mageCnt >= 4 ? 0.3 : mageCnt >= 3 ? 0.15 : 0;
   if (lsPct > 0) {
     const lsHeal = Math.floor(damage * lsPct);
     caster.currentHp = Math.min(caster.maxHp, caster.currentHp + lsHeal);
