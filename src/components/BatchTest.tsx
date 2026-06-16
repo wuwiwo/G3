@@ -224,7 +224,7 @@ export const BatchTest: React.FC<Props> = ({
     );
     lines.push("");
     lines.push(
-      "角色\t种族\t队伍\t输出\t物伤\t魔伤\t纯粹\t承伤\t承物\t承魔\t承纯\t治疗\t吸血\t击杀\t死亡\t技能\t存活(s)"
+      "角色\t种族\t队伍\t输出\t物伤\t魔伤\t纯粹\t承伤\t承物\t承魔\t承纯\t治疗\t技能治疗\t吸血\t击杀\t死亡\t技能\t存活(s)"
     );
     for (const [, stat] of unitList) {
       lines.push(
@@ -241,6 +241,7 @@ export const BatchTest: React.FC<Props> = ({
           stat.magDmgTaken,
           stat.pureDmgTaken,
           stat.totalHealing,
+          stat.skillHealing,
           stat.lifeStealHealing,
           stat.kills.toFixed(1),
           stat.deaths.toFixed(1),
@@ -248,6 +249,26 @@ export const BatchTest: React.FC<Props> = ({
           stat.survivalTime.toFixed(1),
         ].join("\t")
       );
+    }
+    // Skill stats
+    if (results.skillStats && results.skillStats.size > 0) {
+      lines.push("");
+      lines.push("=== 技能统计(场均) ===");
+      lines.push("角色\t技能\t次数\t总伤\t物伤\t魔伤\t纯粹");
+      for (const [, sv] of results.skillStats.entries()) {
+        const s = sv as any;
+        lines.push(
+          [
+            s.ownerName || "?",
+            s.skillName,
+            Math.round(s.casts / runs),
+            Math.round(s.totalDamage / runs),
+            Math.round(s.physDmg / runs),
+            Math.round(s.magDmg / runs),
+            Math.round(s.pureDmg / runs),
+          ].join("\t")
+        );
+      }
     }
     navigator.clipboard.writeText(lines.join("\n"));
   };
