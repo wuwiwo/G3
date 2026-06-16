@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ArenaUnit, DamageType, RACE_NAMES } from "../types";
+import { ALL_LINES } from "../data/lines";
 
 const SC: Record<string, string> = {
   stun: "#f44",
@@ -245,6 +246,32 @@ const UnitSprite: React.FC<{
           }}
         >
           💬 {skBubble}
+        </div>
+      )}
+
+      {/* Dialogue line */}
+      {unit.lastLine && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: -2,
+            left: "50%",
+            transform: "translateX(-50%)",
+            fontSize: 8,
+            fontWeight: 600,
+            color: "#ffeb3b",
+            background: "rgba(0,0,0,0.8)",
+            padding: "1px 6px",
+            borderRadius: 8,
+            whiteSpace: "nowrap",
+            zIndex: 10,
+            maxWidth: 120,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            animation: "floatUp 0.8s ease-out forwards",
+          }}
+        >
+          💭 {unit.lastLine}
         </div>
       )}
 

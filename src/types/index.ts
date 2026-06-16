@@ -122,6 +122,7 @@ export interface CharacterDef {
   talent: string;
   skill: Skill;
   canBeCutIn?: boolean;
+  lines?: Record<string, string[]>;
 }
 
 export interface ArenaUnit {
@@ -194,6 +195,7 @@ export interface ArenaUnit {
   lastHeal?: { value: number; time: number };
   lastSkillName?: string;
   lastSkillCast?: { name: string; time: number };
+  lastLine?: string;
   lastAction?: { time: number; targetName?: string; isTarget?: boolean };
 }
 

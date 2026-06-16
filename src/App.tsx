@@ -22,7 +22,7 @@ const App: React.FC = () => {
   const [enemyTeam, setEnemyTeam] = useState<
     { charId: string; row: number; col: number }[]
   >([]);
-  const [debug, setDebug] = useState(false);
+  const [debug, setDebug] = useState(true);
   const [focusUnit, setFocusUnit] = useState<ArenaUnit | null>(null);
   const [testMode, setTestMode] = useState(false);
 

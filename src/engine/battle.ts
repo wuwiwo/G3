@@ -13,6 +13,7 @@ import { getActiveBonds } from "../data/races";
 import { getSkillHandler } from "./SkillRegistry";
 import { CHARACTER_MAP } from "../data/characters";
 import { EQUIPMENT_MAP } from "../data/equipment";
+import { ALL_LINES } from "../data/lines";
 
 let nextUnitId = 0;
 let nextLogId = 0;
@@ -53,6 +54,16 @@ function shuffle<T>(arr: T[]): T[] {
 /** Check if a unit's talents are suppressed by Ruin */
 function isRuined(u: any): boolean {
   return u.statuses?.some((s: any) => s.type === "ruin");
+}
+
+/** Pick a random dialogue line for a unit */
+function triggerLine(u: any, category: string, targetName?: string) {
+  const lines = u.def?.id ? (ALL_LINES as any)[u.def.id]?.[category] : null;
+  if (!lines || lines.length === 0) return;
+  let line = lines[Math.floor(Math.random() * lines.length)];
+  if (targetName)
+    line = line.replace("[角色名]", targetName).replace("[目标]", targetName);
+  u.lastLine = line;
 }
 
 function lvScale(base: number, growth: number, level: number) {
@@ -696,6 +707,8 @@ function updateAutoAttacks(state: any) {
             text: `${pfx(unit)} ⚔️ ${pfx(target)}: ${result.finalDamage}${result.isCrit ? "💥" : ""}${state._debug ? ` raw=${result.rawDamage.toFixed(0)} def=${Math.floor(target.currentPhysicalDef)} dr=${((1 - result.afterDef / result.rawDamage) * 100).toFixed(0)}% front=${result.afterFrontRow.toFixed(0)} other=${result.afterOtherReduction.toFixed(0)} block=${result.blocked}${result.isCrit ? " crit*1.35=" + (result.finalDamage / 1.35).toFixed(0) : ""}` : ""}`,
             type: "damage",
           });
+          // Dialogue: 普攻
+          if (Math.random() < 0.5) triggerLine(unit, "attack", target.def.name);
           // Beast bond v2.0: pure damage on <50%HP targets (no lifesteal)
           if (unit.def.race === "beast") {
             const beastCnt = state.units.filter(
@@ -819,6 +832,15 @@ function updateDeaths(state: any) {
       text: `💀 ${pfx(u)} 阵亡！`,
       type: "death",
     });
+    // Dialogue: 阵亡
+    const killer = u.lastHitBy
+      ? state.units.find((x: any) => x.id === u.lastHitBy)
+      : null;
+    triggerLine(
+      u,
+      killer && killer.def.race === u.def.race ? "allyDeath" : "death",
+      killer?.def.name
+    );
     // 暗影噬龙击杀奖励：如果目标有暗影标记，回血20%+全龙CD-20%
     if (u._markExpire && u._markExpire > state.time - 5) {
       const aysl = state.units.find(
@@ -1095,6 +1117,8 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
     type: "skill",
   });
   caster.lastSkillCast = { name: sk.name, time: state.time };
+  // Dialogue: 技能
+  triggerLine(caster, "skill");
 
   // 秀逗大师天赋：同排友方每次技能提升自身6%攻速，5层上限
   for (const xdds of state.units.filter(
