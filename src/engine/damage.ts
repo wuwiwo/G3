@@ -305,6 +305,10 @@ export function calcHeal(
   if (target.statuses.find((s) => s.type === StatusType.Freeze)) {
     heal *= 0.5;
   }
+  // Check for poison (-25% healing received)
+  if (target.statuses.find((s) => s.type === StatusType.Poison)) {
+    heal *= 0.75;
+  }
   // Check for anti-heal (no healing at all)
   if (target.statuses.find((s) => s.type === StatusType.AntiHeal)) {
     heal = 0;

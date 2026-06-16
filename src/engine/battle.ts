@@ -640,7 +640,7 @@ function updateAutoAttacks(state: any) {
       for (const target of targets) {
         if (!target || target.isDead) continue;
         let atkRatio = 1;
-        if (unit.def.id === "mds") atkRatio = 0.85; // -15% attack per target
+        if (unit.def.id === "mds") atkRatio = 0.9; // -10% attack per target (v2.0)
         const result = calcDamage(unit, target, atkRatio, DamageType.Physical, {
           evasion: target.evasion,
           hitRateMod: unit.hitRateMod,
@@ -1372,7 +1372,7 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
       targets = shuffle(allies).slice(0, 2);
     } else if (sk.id === "hbfl_heal") {
       const candidates = allies.filter(
-        (a) => a.def.race === "dragon" && a.currentHp / a.maxHp < 0.3
+        (a) => a.def.race === "dragon" && a.currentHp / a.maxHp < 0.75
       );
       targets = candidates.length > 0 ? [candidates[0]] : [];
     } else {
