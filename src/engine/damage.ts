@@ -217,6 +217,10 @@ export function calcDamage(
   if (inspire) {
     otherReduction *= inspire.value ?? 0.7;
   }
+  // Apply permanent damage reduction (e.g. Dragon bond base DR)
+  if ((defender as any).damageReduction) {
+    otherReduction *= 1 - (defender as any).damageReduction;
+  }
   result.afterOtherReduction = result.afterFrontRow * otherReduction;
 
   // --- Block check (physical/magical only, not pure) ---

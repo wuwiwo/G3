@@ -696,21 +696,14 @@ function updateAutoAttacks(state: any) {
             text: `${pfx(unit)} ⚔️ ${pfx(target)}: ${result.finalDamage}${result.isCrit ? "💥" : ""}${state._debug ? ` raw=${result.rawDamage.toFixed(0)} def=${Math.floor(target.currentPhysicalDef)} dr=${((1 - result.afterDef / result.rawDamage) * 100).toFixed(0)}% front=${result.afterFrontRow.toFixed(0)} other=${result.afterOtherReduction.toFixed(0)} block=${result.blocked}${result.isCrit ? " crit*1.35=" + (result.finalDamage / 1.35).toFixed(0) : ""}` : ""}`,
             type: "damage",
           });
-          // Beast bond: 20% lifesteal on targets below 50% HP
+          // Beast bond v2.0: pure damage on <50%HP targets (no lifesteal)
           if (unit.def.race === "beast") {
             const beastCnt = state.units.filter(
               (u: any) =>
                 u.team === unit.team && !u.isDead && u.def.race === "beast"
             ).length;
             if (beastCnt >= 3 && target.currentHp / target.maxHp < 0.5) {
-              const is4Tier = beastCnt >= 4;
-              const lsPct = is4Tier ? 0.3 : 0.15;
-              const purePct = is4Tier ? 0.1 : 0.05;
-              const heal = Math.floor(result.finalDamage * lsPct);
-              unit.currentHp = Math.min(unit.maxHp, unit.currentHp + heal);
-              addStat(state, unit.id, "totalHealingDone", heal);
-              addStat(state, unit.id, "lifeStealHealing", heal);
-              // Pure damage bonus to <50% HP target
+              const purePct = beastCnt >= 4 ? 0.1 : 0.05;
               const pureDmg = Math.floor(unit.currentAttack * purePct);
               target.currentHp -= pureDmg;
               addStat(state, unit.id, "totalDamageDealt", pureDmg);

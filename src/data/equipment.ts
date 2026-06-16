@@ -53,7 +53,7 @@ export const ALL_EQUIPMENT: Equipment[] = [
     id: "poison_blade",
     name: "淬毒之刃",
     description: "攻击速度+25%。造成伤害40%中毒5s。攻击中毒敌人伤害+20%",
-    stats: {},
+    stats: { attackSpeedPercent: 25 },
     tags: ["poison", "bonus_vs_poison"],
   },
   {
@@ -154,14 +154,14 @@ export const ALL_EQUIPMENT: Equipment[] = [
     id: "dwarf_goggles",
     name: "缩小护镜",
     description: "闪避率+15%。受到攻击几率-35%。战斗开始15s后破坏",
-    stats: {},
+    stats: { evasionPercent: 15 },
     tags: ["evasion", "expire"],
   },
   {
     id: "golden_staff",
     name: "金箍棒",
-    description: "命中率+50% 攻击速度+20%。攻击40%附加自身攻击×20%魔法伤害",
-    stats: {},
+    description: "攻击速度+20% 命中率+50%。攻击40%附加自身攻击×20%魔法伤害",
+    stats: { attackSpeedPercent: 20, hitRate: 50 },
     tags: ["bonus_magic_dmg"],
   },
 ];
