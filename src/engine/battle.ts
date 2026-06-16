@@ -90,6 +90,7 @@ export function createUnit(
     autoAttackTargetId: undefined,
     evasion: def.id === "sszs" ? 0.25 : 0,
     hitRateMod: def.id === "hd" ? -0.15 : 0,
+    tenacity: row === 0 ? 5 : 0, // Front row +5% tenacity (v2.0)
   };
 }
 
@@ -206,6 +207,17 @@ export function initBattle(
               stacks: 1,
               value: drVal,
             });
+          }
+        }
+      }
+      // Beast bond: tenacity (v2.0 replaces lifesteal)
+      if (race === "beast") {
+        const tenacityVal = count >= 4 ? 35 : count >= 3 ? 10 : 0;
+        if (tenacityVal > 0) {
+          for (const u of us) {
+            if (u.def.race === "beast") {
+              u.tenacity = (u.tenacity || 0) + tenacityVal;
+            }
           }
         }
       }

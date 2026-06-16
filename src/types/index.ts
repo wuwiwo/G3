@@ -159,6 +159,7 @@ export interface ArenaUnit {
   critRate?: number;
   critDamage?: number;
   blockRate?: number;
+  tenacity?: number;
   damageReduction?: number;
   skillPower?: number;
   reflectDamage?: number;

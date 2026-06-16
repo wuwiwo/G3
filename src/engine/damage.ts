@@ -1,8 +1,20 @@
 import { ArenaUnit, DamageType, Race, StatusType } from "../types";
 
-/** def/(def+200), cap 80% at def=800 */
+/**
+ * Defense reduction formula v5.2 (segmented):
+ *   def 0-500:   1 - 1/(1 + def/680)^1.6
+ *   def 500-1500: 0.585 + (def-500) * 0.000215
+ *   def >1500:   0.80 (cap)
+ */
 export function calcDefReduction(def: number): number {
-  return Math.min(def / (def + 200), 0.8);
+  if (def <= 0) return 0;
+  if (def <= 500) {
+    return 1 - 1 / Math.pow(1 + def / 680, 1.6);
+  }
+  if (def <= 1500) {
+    return Math.min(0.585 + (def - 500) * 0.000215, 0.8);
+  }
+  return 0.8;
 }
 
 /** Block chance by race, +10% if in front row */
@@ -22,10 +34,10 @@ function getBlockChance(race: Race, isFrontRow: boolean = false): number {
   }
 }
 
-/** Block value: Beast uses def/5, others def/7 */
+/** Block value (v2.0): Beast def/4, others def/6 */
 function calcBlockValue(def: number, race: Race): number {
-  if (race === Race.Beast) return Math.floor(def / 5);
-  return Math.floor(def / 7);
+  if (race === Race.Beast) return Math.floor(def / 4);
+  return Math.floor(def / 6);
 }
 
 export interface DamageResult {
@@ -47,9 +59,12 @@ export function checkHit(hitRateMod: number, evasion: number): boolean {
   return Math.random() < finalHitRate;
 }
 
-/** Check crit */
-export function checkCrit(critRate: number): boolean {
-  return Math.random() < critRate;
+/** Check crit, considering tenacity */
+export function checkCrit(critRate: number, tenacity: number = 0): boolean {
+  // v2.0: base crit rate 7.5%
+  // Tenacity reduces: actualRate = critRate * (1 - 0.0025 * tenacity)
+  const reduction = 1 - 0.0025 * Math.min(tenacity, 100);
+  return Math.random() < critRate * reduction;
 }
 
 /**
@@ -223,11 +238,17 @@ export function calcDamage(
     Math.floor(result.afterOtherReduction - result.blocked)
   );
 
-  // --- Crit check ---
-  const baseCritRate = 0.05;
-  result.isCrit = checkCrit(baseCritRate);
+  // --- Crit check (v2.0: base 7.5%, tenacity reduces) ---
+  const baseCritRate = 0.075;
+  // Get tenacity from defender (front row +5%, bond bonuses)
+  const defenderTenacity = (defender as any).tenacity || 0;
+  result.isCrit = checkCrit(baseCritRate, defenderTenacity);
   if (result.isCrit && result.finalDamage > 0) {
-    result.finalDamage = Math.floor(result.finalDamage * 1.35);
+    // Tenacity also reduces crit damage: dmg * 1.35 * (1 - 0.004 * tenacity)
+    const critDmgMult = 1.35 * (1 - 0.004 * Math.min(defenderTenacity, 100));
+    result.finalDamage = Math.floor(
+      result.finalDamage * Math.max(critDmgMult, 1)
+    );
   }
 
   // Fatal strike handled externally by applyFatalStrike()
