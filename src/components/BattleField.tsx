@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo } from "react";
 import { BattleState, Row, ROW_NAMES, ArenaUnit } from "../types";
 import UnitSprite from "./UnitSprite";
 
@@ -7,6 +7,8 @@ interface Props {
   side: "ally" | "enemy";
   onUnitClick?: (unit: ArenaUnit) => void;
   focusUnit?: ArenaUnit | null;
+  /** 默认横向对峙；vertical 为旧的上下堆叠布局（保留兼容） */
+  layout?: "horizontal" | "vertical";
 }
 
 const bondRC: Record<string, string> = {
@@ -28,30 +30,12 @@ const bondNM: Record<string, string> = {
   holy: "圣",
 };
 
-// Damage type → arrow color
-const DMG_ARROW_COLOR: Record<string, string> = {
-  physical: "#ff5252",
-  magical: "#b388ff",
-  pure: "#ffffff",
-};
-
-function getTarget(battle: BattleState, u: ArenaUnit): ArenaUnit | null {
-  if (!u.lastHitTarget) return null;
-  const target = battle.units.find((x) => x.id === u.lastHitTarget);
-  if (target && !target.isDead) return target;
-  return null;
-}
-
-// Cell layout constants — must match the grid rendering below
-const CELL_W = 86;  // approximate cell width
-const CELL_H = 84;  // approximate cell height
-const ROW_LABEL_W = 26;
-
 const BattleField: React.FC<Props> = ({
   battle,
   side,
   onUnitClick,
   focusUnit,
+  layout = "horizontal",
 }) => {
   const grid = useMemo(() => {
     const g: (ArenaUnit | null)[][] = [
@@ -60,7 +44,13 @@ const BattleField: React.FC<Props> = ({
       [null, null, null],
     ];
     for (const u of battle.units) {
-      if (u.team === side && u.row >= 0 && u.row <= 2 && u.col >= 0 && u.col <= 2) {
+      if (
+        u.team === side &&
+        u.row >= 0 &&
+        u.row <= 2 &&
+        u.col >= 0 &&
+        u.col <= 2
+      ) {
         g[u.row][u.col] = u;
       }
     }
@@ -70,230 +60,132 @@ const BattleField: React.FC<Props> = ({
   const isFinished = battle.phase === "finished";
   const won = battle.winner === side;
   const bonds = battle.bonds?.[side] || [];
-  const now = battle.time;
-  // v3: 动态测量格子尺寸（修复箭头偏移——原 CELL_W=86 近似值）
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [cellW, setCellW] = useState(CELL_W);
-  const [cellH, setCellH] = useState(CELL_H);
-  useEffect(() => {
-    const el = panelRef.current;
-    if (!el) return;
-    const measure = () => {
-      const gridEl = el.querySelector("[data-grid]");
-      if (!gridEl) return;
-      const rect = gridEl.getBoundingClientRect();
-      setCellW(rect.width / 3);
-      const rowEl = gridEl.firstElementChild as HTMLElement | null;
-      if (rowEl) setCellH(rowEl.getBoundingClientRect().height);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  // v3: 全局格子坐标（跨面板箭头用）——每 tick 测量 DOM 实际位置
-  const cellRectsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
-  useEffect(() => {
-    const map = new Map<string, { x: number; y: number }>();
-    document.querySelectorAll("[data-cell-id]").forEach((el) => {
-      const id = el.getAttribute("data-cell-id");
-      if (!id) return;
-      const r = el.getBoundingClientRect();
-      map.set(id, { x: r.left + r.width / 2, y: r.top + r.height / 2 });
-    });
-    cellRectsRef.current = map;
-  }, [now, battle.units]);
+  const isHorizontal = layout === "horizontal";
 
-  // Attack arrows — colored by damage type, longer duration
-  const arrowLines = useMemo(() => {
-    const lines: {
-      x1: number; y1: number; x2: number; y2: number;
-      color: string; isSkill: boolean; t: number;
-    }[] = [];
-    if (now <= 0) return lines;
-    for (const u of battle.units) {
-      if (u.team !== side) continue;
-      if (!u.lastAction?.time || now - u.lastAction.time > 1.2) continue;
-      const target = getTarget(battle, u);
-      if (!target || target.team === side) continue;
-
-      // v3: 全局 DOM 坐标（跨面板正确）
-      const srcRect = cellRectsRef.current.get(u.id);
-      const dstRect = cellRectsRef.current.get(target.id);
-      if (!srcRect || !dstRect) continue;
-      const x1 = srcRect.x;
-      const y1 = srcRect.y;
-      const x2 = dstRect.x;
-      const y2 = dstRect.y;
-
-      const dmgType = u.lastDamage?.type || "physical";
-      const color = DMG_ARROW_COLOR[dmgType] || DMG_ARROW_COLOR.physical;
-      // v3: 仅技能攻击显示箭头（普攻不显示，避免杂乱）
-      const isSkill = !!u.lastSkillCast && now - u.lastSkillCast.time < 0.9;
-      if (!isSkill) continue;
-
-      lines.push({ x1, y1, x2, y2, color, isSkill, t: u.lastSkillCast!.time });
-    }
-    // v3: 只显示最近的 2 条箭头
-    lines.sort((a, b) => b.t - a.t);
-    return lines.slice(0, 2);
-  }, [battle.units, side, now]);
-
-  const rowOrder =
+  // 横向对峙：双方「前排」都朝中央，因此列的顺序互为镜像
+  const columnOrder: Row[] =
     side === "ally"
       ? [Row.Back, Row.Mid, Row.Front]
       : [Row.Front, Row.Mid, Row.Back];
 
+  const alive = battle.units.filter((u) => u.team === side && !u.isDead).length;
+  const total = battle.units.filter((u) => u.team === side).length;
+  const teamDamage =
+    battle.stats
+      ?.filter((s: any) => s.team === side)
+      .reduce((a: number, s: any) => a + (s.totalDamageDealt || 0), 0) || 0;
+
+  const renderCell = (row: Row, col: number) => {
+    const unit = grid[row][col];
+    if (!unit) {
+      return (
+        <div key={`e-${row}-${col}`} className="arena-empty">
+          空
+        </div>
+      );
+    }
+    return (
+      <div
+        data-cell-id={unit.id}
+        className="arena-cell"
+        key={`${unit.id}-${unit.row}-${unit.col}`}
+      >
+        {row === Row.Front && <span className="front-marker">⚔</span>}
+        <UnitSprite
+          unit={unit}
+          onClick={() => onUnitClick?.(unit)}
+          focused={focusUnit?.id === unit.id}
+        />
+      </div>
+    );
+  };
+
   return (
     <div
-      ref={panelRef}
+      className={`side-panel side-${side} ${isHorizontal ? "side-horizontal" : "side-vertical"}`}
       style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        gap: 3,
-        padding: 6,
         background:
           side === "ally"
-            ? "linear-gradient(180deg, #1a237e33, #0d47a122)"
-            : "linear-gradient(180deg, #b71c1c33, #880e4f22)",
-        borderRadius: 10,
+            ? "linear-gradient(90deg, #0a1226 0%, #152a52 72%, #1c3c72 100%)"
+            : "linear-gradient(90deg, #5c1626 0%, #431326 28%, #1a0a14 100%)",
         border: isFinished
-          ? `4px solid ${won ? "#4caf50" : "#f44336"}`
-          : `1px solid ${side === "ally" ? "#1a237e44" : "#b71c1c44"}`,
-        position: "relative",
+          ? `3px solid ${won ? "#4caf50" : "#f44336"}`
+          : `1px solid ${side === "ally" ? "#1a237e66" : "#b71c1c66"}`,
       }}
     >
-      {/* SVG overlay for attack arrows */}
-      {/* v3: 攻击箭头已移除（技能演出流程内实现） */}
-
-      {/* Result overlay */}
       {isFinished && (
         <div
-          style={{
-            position: "absolute",
-            top: "40%",
-            left: "50%",
-            transform: "translate(-50%,-50%)",
-            fontSize: 28,
-            fontWeight: 900,
-            zIndex: 10,
-            color: won ? "#4caf50" : "#f44336",
-            textShadow: "0 2px 12px rgba(0,0,0,0.9)",
-            background: "rgba(0,0,0,0.75)",
-            padding: "6px 24px",
-            borderRadius: 8,
-            border: `1px solid ${won ? "#4caf5055" : "#f4433655"}`,
-          }}
+          className="side-result"
+          style={{ color: won ? "#4caf50" : "#f44336" }}
         >
           {won ? "胜 利" : "败 北"}
         </div>
       )}
 
-      {/* Team label */}
-      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: side === "ally" ? "#4fc3f7" : "#ef5350" }}>
-        {side === "ally" ? "🟦 我方" : "🟥 敌方"}
+      <div
+        className="side-title"
+        style={{ color: side === "ally" ? "#4fc3f7" : "#ef5350" }}
+      >
+        {side === "ally" ? "◀ 我方" : "敌方 ▶"}
+        <span className="side-alive">
+          {alive}/{total}
+        </span>
       </div>
 
-      {/* Active bonds */}
       {bonds.length > 0 && (
-        <div style={{ display: "flex", gap: 3, justifyContent: "center", flexWrap: "wrap", marginBottom: 2 }}>
+        <div className="side-bonds">
           {bonds.map((b: any) => (
-            <span key={b.race} style={{
-              fontSize: 9, padding: "2px 6px", borderRadius: 4,
-              background: `${bondRC[b.race] || "#555"}33`,
-              color: bondRC[b.race] || "#555",
-              fontWeight: 700, border: `1px solid ${bondRC[b.race] || "#555"}55`,
-            }}>
-              {bondNM[b.race] || b.race}×{b.count}🌟
+            <span
+              key={b.race}
+              style={{
+                background: `${bondRC[b.race] || "#555"}33`,
+                color: bondRC[b.race] || "#555",
+                border: `1px solid ${bondRC[b.race] || "#555"}55`,
+              }}
+            >
+              {bondNM[b.race] || b.race}×{b.count}
             </span>
           ))}
         </div>
       )}
 
-      {/* v3: 实时战斗统计条 */}
-      <div
-        className="battle-stats"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 11,
-          color: "var(--text-dim)",
-          padding: "2px 4px 4px",
-          flexWrap: "wrap",
-          gap: 4,
-        }}
-      >
+      <div className="side-mini-stats">
         <span>
-          ☠️ 击杀{" "}
-          <b style={{ color: "var(--text)" }}>
-            {battle.units.filter((u) => u.team === side && u.isDead).length}
-          </b>
-          /{battle.units.filter((u) => u.team === side).length}
-        </span>
-        <span className="stat-dmg">
-          ⚔ 总输出{" "}
-          <b
-            style={{
-              color: "var(--accent)",
-              fontWeight: 700,
-            }}
-          >
-            {battle.stats
-              ?.filter((s) => s.team === side)
-              .reduce((a, s) => a + (s.totalDamageDealt || 0), 0)
-              .toLocaleString()}
-          </b>
+          ☠ <b>{total - alive}</b> 阵亡
         </span>
         <span>
-          ⏱{" "}
-          <b style={{ color: "var(--text)" }}>
-            {battle.time.toFixed(1)}s
-          </b>
+          ⚔ <b>{teamDamage.toLocaleString()}</b> 输出
         </span>
       </div>
-      {/* 3×3 Grid */}
-      {rowOrder.map((row) => (
-        <div data-grid key={row} style={{ display: "flex", gap: 3, alignItems: "center", minHeight: CELL_H }}>
-          <div style={{
-            width: ROW_LABEL_W, fontSize: 9, color: "var(--text-dim)", fontWeight: 600,
-            textAlign: "center", flexShrink: 0,
-          }}>
-            {ROW_NAMES[row]}
-          </div>
-          <div style={{
-            flex: 1, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 3,
-          }}>
-            {[0, 1, 2].map((col) => {
-              const unit = grid[row][col];
-              return unit ? (
-                <div data-cell-id={unit.id} style={{ position: "relative" }} key={`${unit.id}-${unit.row}-${unit.col}`}>
-                  {row === Row.Front && (
-                    <div style={{
-                      position: "absolute", top: -2, left: 2, fontSize: 8,
-                      color: "#ffeb3b", zIndex: 2, fontWeight: 700,
-                    }}>⚔</div>
-                  )}
-                  <UnitSprite
-                    key={unit.id}
-                    unit={unit}
-                    onClick={() => onUnitClick?.(unit)}
-                    focused={focusUnit?.id === unit.id}
-                  />
-                </div>
-              ) : (
-                <div key={`e-${row}-${col}`} style={{
-                  height: 80, borderRadius: 8, display: "flex",
-                  border: "1.5px dashed var(--panel-border)",
-                  alignItems: "center", justifyContent: "center",
-                  fontSize: 11, color: "var(--text-faint)",
-                  background: "var(--slot-empty)",
-                }}>空</div>
-              );
-            })}
-          </div>
+
+      {isHorizontal ? (
+        <div data-grid className="arena-grid-horizontal">
+          {columnOrder.map((row) => (
+            <div
+              className={`arena-col ${row === Row.Front ? "arena-front" : ""}`}
+              key={row}
+              data-arena-col={row}
+            >
+              <div className="arena-col-label">
+                {row === Row.Front ? "⚔" : ""}
+                {ROW_NAMES[row]}
+              </div>
+              {[0, 1, 2].map((col) => renderCell(row, col))}
+            </div>
+          ))}
         </div>
-      ))}
+      ) : (
+        <div data-grid className="arena-grid-vertical">
+          {columnOrder.map((row) => (
+            <div className="arena-row" key={row}>
+              <div className="arena-row-label">{ROW_NAMES[row]}</div>
+              <div className="arena-row-cells">
+                {[0, 1, 2].map((col) => renderCell(row, col))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

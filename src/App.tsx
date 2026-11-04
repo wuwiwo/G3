@@ -7,10 +7,13 @@ import DataEditor from "./components/DataEditor";
 import UnitDetail from "./components/UnitDetail";
 import { BatchTest } from "./components/BatchTest";
 import KillFeed from "./components/KillFeed";
+import BattleHUD from "./components/BattleHUD";
 import { useBattle } from "./hooks/useBattleState";
+import { useBattleAudio } from "./hooks/useBattleAudio";
+import { sound } from "./audio/SoundEngine";
 import { ArenaUnit } from "./types";
 
-const VERSION = "v2.0";
+const VERSION = "v2.1";
 
 const App: React.FC = () => {
   const {
@@ -44,13 +47,18 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState<"dark" | "light">(
     () => (localStorage.getItem("g3-theme") as "dark" | "light") || "dark"
   );
+  // 技能音效（Web Audio 实时合成，开关/音量记忆到 localStorage）
+  const [soundOn, setSoundOn] = useState(() => sound.isEnabled);
+  const [volume, setVolume] = useState(() => sound.currentVolume);
+
+  useBattleAudio(state);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("g3-theme", theme);
   }, [theme]);
 
-    // v3: 镜头拉近已取消（画面不动）
+  // v3: 镜头拉近已取消（画面不动）
 
   // v3: 技能演出阶段序列（大字→台词→箭头→目标高亮→受击）
   const [cinemaStage, setCinemaStage] = useState(0);
@@ -100,6 +108,8 @@ const App: React.FC = () => {
     ally: { charId: string; row: number; col: number }[],
     enemy: { charId: string; row: number; col: number }[]
   ) => {
+    // 点击「开始」是用户手势，在此解锁 AudioContext
+    sound.unlock();
     setAllyTeam(ally);
     setEnemyTeam(enemy);
     startBattle(ally, enemy);
@@ -186,242 +196,269 @@ const App: React.FC = () => {
       }}
     >
       {/* v3: 技能演出（大字→台词→箭头→目标高亮→受击动画） */}
-      {skillPauseActive && (() => {
-        const typeColor = SKILL_TYPE_COLOR[pausedSkillType] || "#ffd54f";
-        const typeLabel = SKILL_TYPE_LABEL[pausedSkillType] || "技能";
-        // 施法者/目标屏幕位置（箭头用）
-        const casterEl = pausedSkillCasterId
-          ? document.querySelector(`[data-cell-id="${pausedSkillCasterId}"]`)
-          : null;
-        const targetEl = pausedSkillTargetId
-          ? document.querySelector(`[data-cell-id="${pausedSkillTargetId}"]`)
-          : null;
-        const casterRect = casterEl ? casterEl.getBoundingClientRect() : null;
-        const targetRect = targetEl ? targetEl.getBoundingClientRect() : null;
-        const ax = casterRect ? casterRect.left + casterRect.width / 2 : 0;
-        const ay = casterRect ? casterRect.top + casterRect.height / 2 : 0;
-        const bx = targetRect ? targetRect.left + targetRect.width / 2 : 0;
-        const by = targetRect ? targetRect.top + targetRect.height / 2 : 0;
-        const targetName = pausedSkillTargetId
-          ? state?.units.find((u) => u.id === pausedSkillTargetId)?.def.name || ""
-          : "";
-        const casterName = pausedSkillCasterId
-          ? state?.units.find((u) => u.id === pausedSkillCasterId)?.def.name || ""
-          : "";
-        // 技能详情（描述/数值）+ 结算值
-        const casterUnit = pausedSkillCasterId
-          ? state?.units.find((u) => u.id === pausedSkillCasterId)
-          : null;
-        const skillDef = casterUnit?.def?.skill;
-        const skillDesc = skillDef?.description || "";
-        const skillMeta = [
-          skillDef?.cooldown ? `冷却 ${skillDef.cooldown}s` : "",
-          skillDef?.castTime ? `施法 ${skillDef.castTime}s` : "",
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        // 结算数值（攻击=目标最近受击 / 治疗=目标最近治疗）
-        const targetUnit = pausedSkillTargetId
-          ? state?.units.find((u) => u.id === pausedSkillTargetId)
-          : null;
-        const settleDmg = targetUnit?.lastDamage?.value || 0;
-        const settleHeal = targetUnit?.lastHeal?.value || 0;
-        const settleText =
-          pausedSkillType === "heal"
-            ? settleHeal > 0
-              ? `💚 +${settleHeal.toLocaleString()}`
-              : "💚 治疗"
-            : pausedSkillType === "attack" && settleDmg > 0
-              ? `💥 -${settleDmg.toLocaleString()}`
-              : "";
-        return (
-          <>
-            {/* 目标受击动画（stage 4） */}
-            {targetEl && cinemaStage >= 4 && (
-              <style>{`[data-cell-id="${pausedSkillTargetId}"] { animation: shake 0.5s ease-in-out 2; box-shadow: 0 0 0 3px ${typeColor} !important; }`}</style>
-            )}
-            {/* 暗化遮罩 */}
-            <div
-              style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(0,0,0,0.6)",
-                zIndex: 95,
-                pointerEvents: "none",
-                animation: "fadeIn 0.2s ease-out",
-              }}
-            />
-            {/* 演出箭头（stage 2+） */}
-            {cinemaStage >= 2 && casterRect && targetRect && (
-              <svg
+      {skillPauseActive &&
+        (() => {
+          const typeColor = SKILL_TYPE_COLOR[pausedSkillType] || "#ffd54f";
+          const typeLabel = SKILL_TYPE_LABEL[pausedSkillType] || "技能";
+          // 施法者/目标屏幕位置（箭头用）
+          const casterEl = pausedSkillCasterId
+            ? document.querySelector(`[data-cell-id="${pausedSkillCasterId}"]`)
+            : null;
+          const targetEl = pausedSkillTargetId
+            ? document.querySelector(`[data-cell-id="${pausedSkillTargetId}"]`)
+            : null;
+          const casterRect = casterEl ? casterEl.getBoundingClientRect() : null;
+          const targetRect = targetEl ? targetEl.getBoundingClientRect() : null;
+          const ax = casterRect ? casterRect.left + casterRect.width / 2 : 0;
+          const ay = casterRect ? casterRect.top + casterRect.height / 2 : 0;
+          const bx = targetRect ? targetRect.left + targetRect.width / 2 : 0;
+          const by = targetRect ? targetRect.top + targetRect.height / 2 : 0;
+          const targetName = pausedSkillTargetId
+            ? state?.units.find((u) => u.id === pausedSkillTargetId)?.def
+                .name || ""
+            : "";
+          const casterName = pausedSkillCasterId
+            ? state?.units.find((u) => u.id === pausedSkillCasterId)?.def
+                .name || ""
+            : "";
+          // 技能详情（描述/数值）+ 结算值
+          const casterUnit = pausedSkillCasterId
+            ? state?.units.find((u) => u.id === pausedSkillCasterId)
+            : null;
+          const skillDef = casterUnit?.def?.skill;
+          const skillDesc = skillDef?.description || "";
+          const skillMeta = [
+            skillDef?.cooldown ? `冷却 ${skillDef.cooldown}s` : "",
+            skillDef?.castTime ? `施法 ${skillDef.castTime}s` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          // 结算数值（攻击=目标最近受击 / 治疗=目标最近治疗）
+          const targetUnit = pausedSkillTargetId
+            ? state?.units.find((u) => u.id === pausedSkillTargetId)
+            : null;
+          const settleDmg = targetUnit?.lastDamage?.value || 0;
+          const settleHeal = targetUnit?.lastHeal?.value || 0;
+          const settleText =
+            pausedSkillType === "heal"
+              ? settleHeal > 0
+                ? `💚 +${settleHeal.toLocaleString()}`
+                : "💚 治疗"
+              : pausedSkillType === "attack" && settleDmg > 0
+                ? `💥 -${settleDmg.toLocaleString()}`
+                : "";
+          return (
+            <>
+              {/* 目标受击动画（stage 4） */}
+              {targetEl && cinemaStage >= 4 && (
+                <style>{`[data-cell-id="${pausedSkillTargetId}"] { animation: shake 0.5s ease-in-out 2; box-shadow: 0 0 0 3px ${typeColor} !important; }`}</style>
+              )}
+              {/* 暗化遮罩 */}
+              <div
                 style={{
                   position: "fixed",
                   inset: 0,
-                  width: "100vw",
-                  height: "100vh",
-                  zIndex: 96,
+                  background: "rgba(0,0,0,0.6)",
+                  zIndex: 95,
+                  pointerEvents: "none",
+                  animation: "fadeIn 0.2s ease-out",
+                }}
+              />
+              {/* 演出箭头（stage 2+） */}
+              {cinemaStage >= 2 && casterRect && targetRect && (
+                <svg
+                  style={{
+                    position: "fixed",
+                    inset: 0,
+                    width: "100vw",
+                    height: "100vh",
+                    zIndex: 96,
+                    pointerEvents: "none",
+                  }}
+                >
+                  <defs>
+                    <marker
+                      id="cinemaArrow"
+                      viewBox="0 0 12 12"
+                      refX="10"
+                      refY="6"
+                      markerWidth="10"
+                      markerHeight="10"
+                      orient="auto"
+                    >
+                      <path d="M 0 0 L 12 6 L 0 12 L 3 6 z" fill={typeColor} />
+                    </marker>
+                  </defs>
+                  <line
+                    x1={ax}
+                    y1={ay}
+                    x2={bx}
+                    y2={by}
+                    stroke={typeColor}
+                    strokeWidth={4}
+                    strokeDasharray="8 5"
+                    markerEnd="url(#cinemaArrow)"
+                    style={{ animation: "arrowPulse 0.4s ease-out" }}
+                  />
+                </svg>
+              )}
+              {/* 施法者高亮（金色，全程） */}
+              {casterEl && (
+                <style>{`[data-cell-id="${pausedSkillCasterId}"] { box-shadow: 0 0 0 3px #ffd54f, 0 0 20px rgba(255,213,79,0.7) !important; transform: scale(1.06); }`}</style>
+              )}
+              {/* 目标高亮（stage 3+） */}
+              {targetEl && cinemaStage >= 3 && (
+                <style>{`[data-cell-id="${pausedSkillTargetId}"] { box-shadow: 0 0 0 4px ${typeColor} !important; }`}</style>
+              )}
+              {/* 大字文本（持续整个演出） */}
+              <div
+                style={{
+                  position: "fixed",
+                  top: "18%",
+                  left: 0,
+                  right: 0,
+                  zIndex: 97,
+                  textAlign: "center",
                   pointerEvents: "none",
                 }}
               >
-                <defs>
-                  <marker id="cinemaArrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto">
-                    <path d="M 0 0 L 12 6 L 0 12 L 3 6 z" fill={typeColor} />
-                  </marker>
-                </defs>
-                <line
-                  x1={ax} y1={ay} x2={bx} y2={by}
-                  stroke={typeColor}
-                  strokeWidth={4}
-                  strokeDasharray="8 5"
-                  markerEnd="url(#cinemaArrow)"
-                  style={{ animation: "arrowPulse 0.4s ease-out" }}
-                />
-              </svg>
-            )}
-            {/* 施法者高亮（金色，全程） */}
-            {casterEl && (
-              <style>{`[data-cell-id="${pausedSkillCasterId}"] { box-shadow: 0 0 0 3px #ffd54f, 0 0 20px rgba(255,213,79,0.7) !important; transform: scale(1.06); }`}</style>
-            )}
-            {/* 目标高亮（stage 3+） */}
-            {targetEl && cinemaStage >= 3 && (
-              <style>{`[data-cell-id="${pausedSkillTargetId}"] { box-shadow: 0 0 0 4px ${typeColor} !important; }`}</style>
-            )}
-            {/* 大字文本（持续整个演出） */}
-            <div
-              style={{
-                position: "fixed",
-                top: "18%",
-                left: 0,
-                right: 0,
-                zIndex: 97,
-                textAlign: "center",
-                pointerEvents: "none",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 700,
-                  color: "#ffd54f",
-                  textShadow: "0 2px 6px rgba(0,0,0,0.9)",
-                  letterSpacing: 2,
-                  marginBottom: 4,
-                }}
-              >
-                {casterName} 施放
-              </div>
-              <div
-                style={{
-                  fontSize: "clamp(24px, 8vw, 44px)",
-                  fontWeight: 900,
-                  color: typeColor,
-                  textShadow: `0 0 24px ${typeColor}, 0 0 60px ${typeColor}88, 0 2px 4px rgba(0,0,0,0.8)`,
-                  letterSpacing: 5,
-                  animation: "critPop 0.4s ease-out forwards",
-                }}
-              >
-                {pausedSkillName}
-              </div>
-              <div
-                style={{
-                  marginTop: 10,
-                  fontSize: 22,
-                  fontWeight: 700,
-                  color: "#fff",
-                  textShadow: "0 2px 6px rgba(0,0,0,0.9), 0 0 16px rgba(255,255,255,0.3)",
-                  letterSpacing: 2,
-                }}
-              >
-                ✦ {typeLabel} · {targetName ? `→ ${targetName}` : pausedSkillType === "buff" ? "→ 自身/友方" : ""} ✦
-              </div>
-              {/* 技能详情卡（数值） */}
-              {skillDesc && (
                 <div
-                  className="cinema-detail-card"
                   style={{
-                    display: "inline-block",
-                    marginTop: 14,
-                    background: "rgba(0,0,0,0.72)",
-                    border: `1px solid ${typeColor}55`,
-                    borderRadius: 12,
-                    padding: "10px 20px",
-                    fontSize: 14,
-                    color: "rgba(255,255,255,0.92)",
-                    maxWidth: "76%",
-                    textShadow: "0 1px 3px rgba(0,0,0,0.8)",
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: "#ffd54f",
+                    textShadow: "0 2px 6px rgba(0,0,0,0.9)",
+                    letterSpacing: 2,
+                    marginBottom: 4,
                   }}
                 >
-                  {skillDesc}
-                  {skillMeta && (
-                    <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-                      {skillMeta}
-                    </div>
-                  )}
+                  {casterName} 施放
+                </div>
+                <div
+                  style={{
+                    fontSize: "clamp(24px, 8vw, 44px)",
+                    fontWeight: 900,
+                    color: typeColor,
+                    textShadow: `0 0 24px ${typeColor}, 0 0 60px ${typeColor}88, 0 2px 4px rgba(0,0,0,0.8)`,
+                    letterSpacing: 5,
+                    animation: "critPop 0.4s ease-out forwards",
+                  }}
+                >
+                  {pausedSkillName}
+                </div>
+                <div
+                  style={{
+                    marginTop: 10,
+                    fontSize: 22,
+                    fontWeight: 700,
+                    color: "#fff",
+                    textShadow:
+                      "0 2px 6px rgba(0,0,0,0.9), 0 0 16px rgba(255,255,255,0.3)",
+                    letterSpacing: 2,
+                  }}
+                >
+                  ✦ {typeLabel} ·{" "}
+                  {targetName
+                    ? `→ ${targetName}`
+                    : pausedSkillType === "buff"
+                      ? "→ 自身/友方"
+                      : ""}{" "}
+                  ✦
+                </div>
+                {/* 技能详情卡（数值） */}
+                {skillDesc && (
+                  <div
+                    className="cinema-detail-card"
+                    style={{
+                      display: "inline-block",
+                      marginTop: 14,
+                      background: "rgba(0,0,0,0.72)",
+                      border: `1px solid ${typeColor}55`,
+                      borderRadius: 12,
+                      padding: "10px 20px",
+                      fontSize: 14,
+                      color: "rgba(255,255,255,0.92)",
+                      maxWidth: "76%",
+                      textShadow: "0 1px 3px rgba(0,0,0,0.8)",
+                    }}
+                  >
+                    {skillDesc}
+                    {skillMeta && (
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.55)",
+                        }}
+                      >
+                        {skillMeta}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {/* 结算数值（stage 4） */}
+              {cinemaStage >= 4 && settleText && (
+                <div
+                  style={{
+                    position: "fixed",
+                    top: "52%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 97,
+                    textAlign: "center",
+                    pointerEvents: "none",
+                    animation: "critPop 0.4s ease-out forwards",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 32,
+                      fontWeight: 900,
+                      color: pausedSkillType === "heal" ? "#5ecf8a" : "#ff5252",
+                      textShadow: `0 0 20px ${
+                        pausedSkillType === "heal" ? "#5ecf8a" : "#ff5252"
+                      }, 0 2px 4px rgba(0,0,0,0.8)`,
+                    }}
+                  >
+                    {settleText}
+                  </span>
                 </div>
               )}
-            </div>
-            {/* 结算数值（stage 4） */}
-            {cinemaStage >= 4 && settleText && (
-              <div
-                style={{
-                  position: "fixed",
-                  top: "52%",
-                  left: 0,
-                  right: 0,
-                  zIndex: 97,
-                  textAlign: "center",
-                  pointerEvents: "none",
-                  animation: "critPop 0.4s ease-out forwards",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 32,
-                    fontWeight: 900,
-                    color: pausedSkillType === "heal" ? "#5ecf8a" : "#ff5252",
-                    textShadow: `0 0 20px ${
-                      pausedSkillType === "heal" ? "#5ecf8a" : "#ff5252"
-                    }, 0 2px 4px rgba(0,0,0,0.8)`,
-                  }}
-                >
-                  {settleText}
-                </span>
-              </div>
-            )}
-            {/* 台词（stage 1+） */}
-            {cinemaStage >= 1 && pausedSkillLine && (
-              <div
-                style={{
-                  position: "fixed",
-                  bottom: "22%",
-                  left: 0,
-                  right: 0,
-                  zIndex: 97,
-                  textAlign: "center",
-                  pointerEvents: "none",
-                  animation: "fadeIn 0.3s ease-out",
-                }}
-              >
+              {/* 台词（stage 1+） */}
+              {cinemaStage >= 1 && pausedSkillLine && (
                 <div
                   style={{
-                    display: "inline-block",
-                    background: "rgba(0,0,0,0.7)",
-                    border: `1px solid ${typeColor}66`,
-                    borderRadius: 12,
-                    padding: "10px 22px",
-                    fontSize: 17,
-                    color: "#fff",
-                    maxWidth: "70%",
-                    textShadow: "0 1px 3px rgba(0,0,0,0.8)",
+                    position: "fixed",
+                    bottom: "22%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 97,
+                    textAlign: "center",
+                    pointerEvents: "none",
+                    animation: "fadeIn 0.3s ease-out",
                   }}
                 >
-                  💬 {pausedSkillLine}
+                  <div
+                    style={{
+                      display: "inline-block",
+                      background: "rgba(0,0,0,0.7)",
+                      border: `1px solid ${typeColor}66`,
+                      borderRadius: 12,
+                      padding: "10px 22px",
+                      fontSize: 17,
+                      color: "#fff",
+                      maxWidth: "70%",
+                      textShadow: "0 1px 3px rgba(0,0,0,0.8)",
+                    }}
+                  >
+                    💬 {pausedSkillLine}
+                  </div>
                 </div>
-              </div>
-            )}
-          </>
-        );
-      })()}
+              )}
+            </>
+          );
+        })()}
       {/* 主题切换 */}
       <button
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -477,7 +514,15 @@ const App: React.FC = () => {
                   {state.time.toFixed(1)}s
                 </span>
               </span>
-              <div className="topbar-controls" style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <div
+                className="topbar-controls"
+                style={{
+                  display: "flex",
+                  gap: 4,
+                  flexWrap: "wrap",
+                  justifyContent: "flex-end",
+                }}
+              >
                 {/* v3: 手动暂停 */}
                 <button
                   onClick={togglePause}
@@ -509,6 +554,37 @@ const App: React.FC = () => {
                 >
                   D{debug ? "N" : "FF"}
                 </button>
+                <button
+                  onClick={() => {
+                    const next = !soundOn;
+                    sound.setEnabled(next);
+                    if (next) sound.unlock();
+                    setSoundOn(next);
+                  }}
+                  style={btnStyle(soundOn ? "#2e7d32" : "#444")}
+                  title="技能音效开关"
+                >
+                  {soundOn ? "🔊" : "🔇"}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={volume}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setVolume(v);
+                    sound.setVolume(v);
+                  }}
+                  title="音效音量"
+                  style={{
+                    width: 52,
+                    height: 18,
+                    accentColor: "#b4a078",
+                    cursor: "pointer",
+                  }}
+                />
                 <button
                   onClick={handleRematch}
                   disabled={state.phase !== "finished"}
@@ -566,13 +642,12 @@ const App: React.FC = () => {
           </div>
 
           {battleTab === "field" && (
-            <>
-              <div
-                style={{
-                  padding: 4,
-                  position: "relative",
-                }}
-              >
+            <div className="arena-wrap">
+              {/* 实时战斗统计 */}
+              <BattleHUD battle={state} />
+
+              {/* 双方水平横向 PK */}
+              <div className="arena-stage">
                 <KillFeed
                   log={state.battleLog}
                   units={state.units as any}
@@ -584,15 +659,30 @@ const App: React.FC = () => {
                   onUnitClick={setSelectedUnit}
                   focusUnit={focusUnit}
                 />
-                <div
-                  style={{
-                    textAlign: "center",
-                    fontSize: 14,
-                    color: "#333",
-                    padding: "1px 0",
-                  }}
-                >
-                  ⚔
+                <div className="arena-center">
+                  <div className="arena-center-vs">VS</div>
+                  <div className="arena-center-time">
+                    {state.time.toFixed(1)}s
+                  </div>
+                  <div className="arena-center-clash">⚔</div>
+                  <div className="arena-center-score">
+                    <span style={{ color: "#4fc3f7" }}>
+                      {
+                        state.units.filter(
+                          (u) => u.team === "ally" && !u.isDead
+                        ).length
+                      }
+                    </span>
+                    <span style={{ color: "#666" }}> : </span>
+                    <span style={{ color: "#ef5350" }}>
+                      {
+                        state.units.filter(
+                          (u) => u.team === "enemy" && !u.isDead
+                        ).length
+                      }
+                    </span>
+                  </div>
+                  <div className="arena-center-hint">水平对峙</div>
                 </div>
                 <BattleField
                   battle={state}
@@ -601,14 +691,8 @@ const App: React.FC = () => {
                   focusUnit={focusUnit}
                 />
               </div>
-              <div
-                style={{
-                  padding: "2px 10px",
-                  fontSize: 10,
-                  color: "#555",
-                  textAlign: "center",
-                }}
-              >
+
+              <div className="arena-caption">
                 <span style={{ color: "#4fc3f7" }}>●</span>{" "}
                 {
                   state.units.filter((u) => u.team === "ally" && !u.isDead)
@@ -622,8 +706,11 @@ const App: React.FC = () => {
                     .length
                 }
                 /{state.units.filter((u) => u.team === "enemy").length}
+                <span style={{ marginLeft: 10, color: "var(--text-faint)" }}>
+                  点击单位查看详情
+                </span>
               </div>
-            </>
+            </div>
           )}
 
           {battleTab === "stats" && state.stats && (

@@ -158,7 +158,9 @@ const UnitSprite: React.FC<{
       style={{
         height: 80,
         borderRadius: 8,
-        background: unit.isDead ? "var(--btn-bg)" : (BG[unit.def.race] || "transparent"),
+        background: unit.isDead
+          ? "var(--btn-bg)"
+          : BG[unit.def.race] || "transparent",
         border: `2px solid ${unit.isDead ? "#444" : focused ? "#ffeb3b" : rc + "88"}`,
         display: "flex",
         flexDirection: "row",
@@ -185,21 +187,30 @@ const UnitSprite: React.FC<{
           name={unit.def.name}
           race={unit.def.race}
           stats={unit.def.stats}
-          size={42}
+          size={48}
           dead={unit.isDead}
         />
       </div>
 
       {/* Right side: name + HP + status */}
-      <div style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-        minWidth: 0,
-      }}>
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          minWidth: 0,
+        }}
+      >
         {/* Name + race badge */}
-        <div style={{ display: "flex", alignItems: "center", gap: 3, minHeight: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 3,
+            minHeight: 16,
+          }}
+        >
           <span
             style={{
               fontSize: 11,
@@ -256,16 +267,35 @@ const UnitSprite: React.FC<{
               }}
             />
           </div>
-          <span style={{ fontSize: 9, color: unit.isDead ? "var(--text-faint)" : "var(--text)", fontFamily: "monospace", flexShrink: 0, fontWeight: 600 }}>
+          <span
+            style={{
+              fontSize: 9,
+              color: unit.isDead ? "var(--text-faint)" : "var(--text)",
+              fontFamily: "monospace",
+              flexShrink: 0,
+              fontWeight: 600,
+            }}
+          >
             {Math.max(0, Math.floor(unit.currentHp))}
-            <span className="unit-hp-pct" style={{ fontSize: 7, color: "var(--text-faint)" }}>
+            <span
+              className="unit-hp-pct"
+              style={{ fontSize: 7, color: "var(--text-faint)" }}
+            >
               ({Math.round(hp * 100)}%)
             </span>
           </span>
         </div>
 
         {/* Bottom row: cooldown + casting + status */}
-        <div style={{ display: "flex", alignItems: "center", gap: 2, minHeight: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            minHeight: 12,
+            flexWrap: "wrap",
+          }}
+        >
           {/* Cooldown indicator */}
           {unit.cooldownRemaining > 0 && !unit.isDead && (
             <span style={{ fontSize: 8, color: "#ffeb3b", fontWeight: 700 }}>
@@ -274,7 +304,10 @@ const UnitSprite: React.FC<{
           )}
           {/* Casting indicator */}
           {unit.isCasting && !unit.isDead && (
-            <span style={{ fontSize: 8, color: "var(--accent)", fontWeight: 700 }} className="castPulse">
+            <span
+              style={{ fontSize: 8, color: "var(--accent)", fontWeight: 700 }}
+              className="castPulse"
+            >
               ✦施法
             </span>
           )}
@@ -344,7 +377,8 @@ const UnitSprite: React.FC<{
             animation: "floatUp2 0.9s ease-out forwards",
           }}
         >
-          {floatPrefix}{floatText}
+          {floatPrefix}
+          {floatText}
         </div>
       )}
 
