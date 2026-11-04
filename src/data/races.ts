@@ -75,14 +75,21 @@ const BASE_BONDS: Record<Race, TierData> = {
   },
   [Race.Dragon]: {
     2: {},
-  
+
     3: { special: "起始冷却-20%+减伤8%+开局2倍减伤6s" }, // v3.15d: 4→8
     4: { special: "起始冷却-35%+减伤12%+开局2.5倍减伤10s" }, // v3.15d: 6→12
   },
   [Race.Holy]: {
-    2: { special: "敌方#增益/#治疗效果-10%：我方全体获得2%相同增益/平分3%治疗效果" }, // v3.15h
-    3: { special: "敌方#增益/#治疗/#控制效果-8%：我方4%增益/平分5%治疗/控制反制5%" },
-    4: { special: "敌方#增益/#治疗/#控制效果-12%：我方6%增益/平分8%治疗/控制反制8%" },
+    2: {
+      special: "敌方#增益/#治疗效果-10%：我方全体获得2%相同增益/平分3%治疗效果",
+    }, // v3.15h
+    3: {
+      special: "敌方#增益/#治疗/#控制效果-8%：我方4%增益/平分5%治疗/控制反制5%",
+    },
+    4: {
+      special:
+        "敌方#增益/#治疗/#控制效果-12%：我方6%增益/平分8%治疗/控制反制8%",
+    },
   },
 };
 
@@ -130,6 +137,7 @@ export const RACE_CONFIG: Record<
   [Race.Mage]: { label: "法师", color: "#2196f3", short: "法" },
   [Race.Undead]: { label: "亡灵", color: "#9c27b0", short: "亡" },
   [Race.Dragon]: { label: "龙族", color: "#ff9800", short: "龙" },
+  [Race.Holy]: { label: "圣职者", color: "#ffd54f", short: "圣" },
 };
 
 export const RACE_BG: Record<string, string> = {
@@ -139,6 +147,7 @@ export const RACE_BG: Record<string, string> = {
   [Race.Mage]: "linear-gradient(135deg,#0d47a1,#1565c0)",
   [Race.Undead]: "linear-gradient(135deg,#4a148c,#6a1b9a)",
   [Race.Dragon]: "linear-gradient(135deg,#e65100,#ef6c00)",
+  [Race.Holy]: "linear-gradient(135deg,#b8932a,#8a6a12)",
 };
 
 export function countRaceOnTeam(

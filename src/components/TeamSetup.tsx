@@ -3,6 +3,7 @@ import { Row, Race, RACE_NAMES, CharacterDef } from "../types";
 import { ALL_CHARACTERS, CHARACTER_MAP } from "../data/characters";
 import { ALL_EQUIPMENT, EQUIPMENT_MAP } from "../data/equipment";
 import CharDetail from "./CharDetail";
+import CharIntroPopover, { IntroTarget } from "./CharIntroPopover";
 import { useSavedTeams } from "../hooks/useSavedTeams";
 import { calcBondsFromDefs } from "../engine/bonds";
 
@@ -112,9 +113,7 @@ function deployOrder(race: Race): CharacterDef[] {
   const chars = ALL_CHARACTERS.filter((c) => c.race === race);
   const isHealer = (c: CharacterDef) =>
     c.skill.tags?.includes("治疗") || c.skill.heal !== undefined;
-  const tanks = [...chars]
-    .sort((a, b) => b.stats.hp - a.stats.hp)
-    .slice(0, 3);
+  const tanks = [...chars].sort((a, b) => b.stats.hp - a.stats.hp).slice(0, 3);
   const rest = chars.filter((c) => !tanks.includes(c));
   const healers = rest.filter(isHealer);
   const dps = rest.filter((c) => !isHealer(c));
@@ -142,6 +141,8 @@ function TeamPanel({
   >(Array.from({ length: 9 }, () => ({ charId: null, equipmentId: null })));
   const [sel, setSel] = useState<string | null>(null);
   const [detail, setDetail] = useState<CharacterDef | null>(null);
+  /** v2.2 右键查看介绍浮层 */
+  const [intro, setIntro] = useState<IntroTarget | null>(null);
   const [pool, setPool] = useState(true);
   const [exp, setExp] = useState<Record<string, boolean>>({
     beast: false,
@@ -188,7 +189,10 @@ function TeamPanel({
     if (d.from !== undefined) {
       if (d.from === i) return;
       const tmp = ng[i];
-      ng[i] = { ...ng[d.from], equipmentId: ng[i].equipmentId || ng[d.from].equipmentId };
+      ng[i] = {
+        ...ng[d.from],
+        equipmentId: ng[i].equipmentId || ng[d.from].equipmentId,
+      };
       ng[d.from] = tmp;
     } else {
       // 从池子拖入
@@ -252,6 +256,17 @@ function TeamPanel({
     ng[i] = { charId: null, equipmentId: null };
     setGrid(ng);
     emit(ng);
+  };
+
+  /** v2.2 右键：在鼠标位置弹出角色介绍浮层 */
+  const openIntro = (
+    ch: CharacterDef,
+    e: React.MouseEvent,
+    extra?: Partial<IntroTarget>
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIntro({ char: ch, x: e.clientX, y: e.clientY, ...extra });
   };
 
   const randomize = () => {
@@ -373,7 +388,16 @@ function TeamPanel({
           marginBottom: 8,
         }}
       >
-        <span style={{ fontSize: 17, fontWeight: 800, color, display: "flex", alignItems: "center", gap: 8 }}>
+        <span
+          style={{
+            fontSize: 17,
+            fontWeight: 800,
+            color,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
           <span
             style={{
               display: "inline-block",
@@ -394,10 +418,21 @@ function TeamPanel({
             </span>
           )}
         </span>
-        <div className="panel-controls" style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+        <div
+          className="panel-controls"
+          style={{ display: "flex", gap: 5, flexWrap: "wrap" }}
+        >
           <button
             onClick={() => setEquipMode(!equipMode)}
-            style={btn(equipMode ? { background: "#5c4a1e", color: "#ffd76a", borderColor: "#8a6d1f" } : {})}
+            style={btn(
+              equipMode
+                ? {
+                    background: "#5c4a1e",
+                    color: "#ffd76a",
+                    borderColor: "#8a6d1f",
+                  }
+                : {}
+            )}
           >
             {equipMode ? "✅ 装备" : "🎒 装备"}
           </button>
@@ -415,7 +450,9 @@ function TeamPanel({
 
       {/* ── 羁绊 ── */}
       {bonds.length > 0 && (
-        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+        <div
+          style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}
+        >
           {bonds.map((b) => (
             <span
               key={b.race}
@@ -473,7 +510,11 @@ function TeamPanel({
           ))}
         </div>
         <div
-          style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4 }}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3,1fr)",
+            gap: 4,
+          }}
         >
           {grid.map((slot, i) => {
             const ch = slot.charId
@@ -487,16 +528,37 @@ function TeamPanel({
             return (
               <div
                 key={i}
+                className="setup-slot"
+                data-slot-index={i}
                 onClick={() => clickGrid(i)}
                 onContextMenu={(e) => {
                   e.preventDefault();
+                  // 装备模式下右键仍用于「卸下装备」，保持原来的操作语义
                   if (equipMode && slot.equipmentId) {
                     const ng = grid.map((s) => ({ ...s }));
                     ng[i] = { ...ng[i], equipmentId: null };
                     setGrid(ng);
                     emit(ng);
-                  } else {
+                    setIntro(null);
+                    return;
+                  }
+                  // Shift / Alt + 右键：保留旧的「一键移除」快捷操作
+                  if (ch && (e.shiftKey || e.altKey)) {
                     remove(i);
+                    setIntro(null);
+                    return;
+                  }
+                  if (ch) {
+                    const rc = posRC(i);
+                    openIntro(ch, e, {
+                      slotIndex: i,
+                      slotLabel: `${ROW_LABELS[rc.row]}·第${rc.col + 1}格`,
+                      equipmentName: eq
+                        ? `${EQ_ICONS[eq.id] || "🎒"} ${eq.name}`
+                        : undefined,
+                    });
+                  } else {
+                    setIntro(null);
                   }
                 }}
                 onDragOver={(e) => {
@@ -558,17 +620,32 @@ function TeamPanel({
                     >
                       {ch.name}
                     </span>
-                    <span style={{ fontSize: 10, color: raceColor || THEME.textDim, marginTop: 2, fontWeight: 600 }}>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: raceColor || THEME.textDim,
+                        marginTop: 2,
+                        fontWeight: 600,
+                      }}
+                    >
                       {RL[ch.race]}
                     </span>
                     {eq && (
-                      <span style={{ fontSize: 7, color: "#ffd76a", marginTop: 1 }}>
+                      <span
+                        style={{ fontSize: 7, color: "#ffd76a", marginTop: 1 }}
+                      >
                         {EQ_ICONS[eq.id] || "🎒"} {eq.name}
                       </span>
                     )}
                   </>
                 ) : (
-                  <span style={{ fontSize: 14, color: "rgba(180,160,120,0.18)", fontWeight: 300 }}>
+                  <span
+                    style={{
+                      fontSize: 14,
+                      color: "rgba(180,160,120,0.18)",
+                      fontWeight: 300,
+                    }}
+                  >
                     +
                   </span>
                 )}
@@ -689,7 +766,7 @@ function TeamPanel({
                     borderRadius: 6,
                     cursor: "pointer",
                     letterSpacing: 0.3,
-                    ['--rc-glow' as any]: `${RC[rr.race]}25`,
+                    ["--rc-glow" as any]: `${RC[rr.race]}25`,
                   }}
                 >
                   ⚡ <span className="deploy-word">一键部署</span>
@@ -712,6 +789,8 @@ function TeamPanel({
                         key={ch.id}
                         className="race-btn"
                         draggable={!isPlaced}
+                        onContextMenu={(e) => openIntro(ch, e)}
+                        title="右键查看角色介绍"
                         onDragStart={(e) => {
                           if (isPlaced) {
                             e.preventDefault();
@@ -733,7 +812,7 @@ function TeamPanel({
                             ? "rgba(255,255,255,0.02)"
                             : `linear-gradient(90deg, ${RC[rr.race]}15 0%, #161c26 30%, #161c26 100%)`,
                           opacity: isPlaced ? 0.4 : 1,
-                          ['--rc-glow' as any]: `${RC[rr.race]}20`,
+                          ["--rc-glow" as any]: `${RC[rr.race]}20`,
                           transition: "all .15s",
                         }}
                       >
@@ -880,7 +959,8 @@ function TeamPanel({
             padding: 8,
             background: "color-mix(in srgb, var(--accent) 6%, transparent)",
             borderRadius: 10,
-            border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+            border:
+              "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
           }}
         >
           <div
@@ -892,7 +972,7 @@ function TeamPanel({
             }}
           >
             {equipSel
-              ? `已选装备 — 点击场上角色装备（右键移除）`
+              ? `已选装备 — 点击场上角色装备（右键卸下装备）`
               : `装备区 — 点击装备选择，再点击场上角色装备（最多 6 件）`}
           </div>
           <div
@@ -961,7 +1041,9 @@ function TeamPanel({
               );
             })}
           </div>
-          <div style={{ fontSize: 9, color: "var(--text-faint)", marginTop: 4 }}>
+          <div
+            style={{ fontSize: 9, color: "var(--text-faint)", marginTop: 4 }}
+          >
             点击已装备的装备卡可移除 · 悬停查看属性 · 已用{" "}
             {grid.filter((s) => s.equipmentId).length}/6
           </div>
@@ -983,12 +1065,28 @@ function TeamPanel({
             "⬆️ 点击格子放置 · 拖拽上阵"
           ) : (
             <>
-              <span className="tip-long">拖拽或点击角色 → 上阵 · 右键移除 · </span>⚡一键部署
+              <span className="tip-long">
+                拖拽或点击角色 → 上阵 · 右键看介绍 · Shift+右键移除 ·{" "}
+              </span>
+              ⚡一键部署
             </>
           )}
         </span>
       </div>
       {detail && <CharDetail char={detail} onClose={() => setDetail(null)} />}
+      {intro && (
+        <CharIntroPopover
+          target={intro}
+          raceColor={RC[intro.char.race] || "var(--accent)"}
+          raceLabel={RL[intro.char.race] || intro.char.race}
+          onClose={() => setIntro(null)}
+          onRemove={
+            intro.slotIndex !== undefined
+              ? () => remove(intro.slotIndex as number)
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }
@@ -1005,9 +1103,9 @@ export const TeamSetup: React.FC<{
 
   return (
     <div
+      className="setup-page"
       style={{
         padding: "8px 10px 40px",
-        maxWidth: 640,
         margin: "0 auto",
         minHeight: "100vh",
         background: THEME.bgGradient,
@@ -1048,7 +1146,9 @@ export const TeamSetup: React.FC<{
             style={{
               padding: "4px 10px",
               fontSize: 10,
-              background: delMode ? "color-mix(in srgb, var(--danger) 18%, transparent)" : "var(--btn-bg)",
+              background: delMode
+                ? "color-mix(in srgb, var(--danger) 18%, transparent)"
+                : "var(--btn-bg)",
               color: delMode ? "var(--danger)" : "var(--text-dim)",
               border: `1px solid ${delMode ? "rgba(212,84,90,.4)" : THEME.panelBorder}`,
               borderRadius: THEME.radiusSm,
@@ -1109,7 +1209,9 @@ export const TeamSetup: React.FC<{
                 borderBottom: "1px solid rgba(255,255,255,.06)",
               }}
             >
-              <span style={{ fontSize: 11, color: THEME.textDim }}>{t.name}</span>
+              <span style={{ fontSize: 11, color: THEME.textDim }}>
+                {t.name}
+              </span>
               <button
                 onClick={() => deleteTeam(t.id)}
                 style={{
@@ -1129,33 +1231,34 @@ export const TeamSetup: React.FC<{
         </div>
       )}
 
-      <TeamPanel
-        side="ally"
-        label="◆ 我方"
-        color="#b8922e"
-        active={focus === "ally"}
-        onFocus={() => setFocus("ally")}
-        onChange={setAlly}
-      />
-      <div
-        style={{
-          textAlign: "center",
-          fontSize: 14,
-          color: THEME.textDim,
-          padding: "2px 0",
-          letterSpacing: 2,
-        }}
-      >
-        ⚔ VS ⚔
+      {/* v2.2 宽屏左右对峙；窄屏保持上下堆叠，与战斗页水平 PK 呼应 */}
+      <div className="setup-arena">
+        <div className="setup-side">
+          <TeamPanel
+            side="ally"
+            label="◆ 我方"
+            color="#b8922e"
+            active={focus === "ally"}
+            onFocus={() => setFocus("ally")}
+            onChange={setAlly}
+          />
+        </div>
+        <div className="setup-vs">
+          <span className="setup-vs-line" />
+          <span className="setup-vs-badge">⚔ VS ⚔</span>
+          <span className="setup-vs-line" />
+        </div>
+        <div className="setup-side">
+          <TeamPanel
+            side="enemy"
+            label="◆ 敌方"
+            color="#b7472a"
+            active={focus === "enemy"}
+            onFocus={() => setFocus("enemy")}
+            onChange={setEnemy}
+          />
+        </div>
       </div>
-      <TeamPanel
-        side="enemy"
-        label="◆ 敌方"
-        color="#b7472a"
-        active={focus === "enemy"}
-        onFocus={() => setFocus("enemy")}
-        onChange={setEnemy}
-      />
       {!ready && (
         <div
           style={{

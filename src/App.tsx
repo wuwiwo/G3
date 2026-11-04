@@ -13,7 +13,7 @@ import { useBattleAudio } from "./hooks/useBattleAudio";
 import { sound } from "./audio/SoundEngine";
 import { ArenaUnit } from "./types";
 
-const VERSION = "v2.1";
+const VERSION = "v2.2";
 
 const App: React.FC = () => {
   const {
