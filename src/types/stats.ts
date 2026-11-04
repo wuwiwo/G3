@@ -32,6 +32,10 @@ export interface BattleStats {
   skillCasts: number;
   critCount: number;
   critDamage: number;
+  // v2.13 Step2/3: 技能/承伤细化
+  skillInterrupts: number;    // 技能被打断次数
+  hitsTaken: number;          // 被攻击次数
+  critsTaken: number;         // 被暴击次数
   // Timing
   survivalTime: number;
 }

@@ -6,6 +6,7 @@ export interface BondEffect {
   hpBonus: number;
   hitRateBonus: number;
   evasionBonus: number;
+  magicalDefBonus?: number;
   special?: string;
 }
 
@@ -17,58 +18,71 @@ interface TierData {
 
 const BASE_BONDS: Record<Race, TierData> = {
   [Race.Beast]: {
-    2: { attackBonus: 10, defenseBonus: 5 },
-    3: {
-      attackBonus: 15,
-      defenseBonus: 10,
-      special: "韧性+10%+对<50%HP敌人5%攻击纯粹伤害",
-    },
-    4: {
-      attackBonus: 25,
-      defenseBonus: 20,
-      special: "韧性+35%+对<50%HP敌人10%攻击纯粹伤害",
-    },
-  },
-  [Race.Hunter]: {
-    2: { attackBonus: 5, hitRateBonus: 10 },
+    2: { attackBonus: 5, defenseBonus: 10, special: "韧性+10%" }, // v2.22 用户设计: 攻5防10
     3: {
       attackBonus: 10,
-      hitRateBonus: 20,
-      special: "反击75%伤害+每5次攻击额外1目标",
+      defenseBonus: 15, // v3.15b: 20→15
+      special: "韧性+18%+对<50%HP敌人6%攻击纯粹伤害",
     },
     4: {
       attackBonus: 20,
-      hitRateBonus: 40,
-      special: "反击100%无视防御+每3次攻击额外1目标",
+      defenseBonus: 25, // v3.16d 评审护栏: 32→25（羁绊防单项≤30%）
+      special: "韧性+35%+对<75%HP敌人25%攻击纯粹伤害", // v3.16d: 35→25（≤30%护栏）
+    },
+  },
+  [Race.Hunter]: {
+    2: { attackBonus: 10, hitRateBonus: 10 }, // v3.16b 评审回滚
+    3: {
+      attackBonus: 20,
+      hitRateBonus: 15,
+      special: "反击40%伤害+12%吸血+每6次攻击额外1目标(40%伤害)", // v3.16f 回滚: 文档值
+    },
+    4: {
+      attackBonus: 30,
+      hitRateBonus: 30,
+      special: "反击75%伤害+20%吸血+每5次攻击额外1目标(80%伤害)", // v3.16f 回滚: 文档值
     },
   },
   [Race.Warrior]: {
-    2: { hpBonus: 15 },
-    3: { hpBonus: 25, special: "每12s恢复4%HP+15%吸血" },
-    4: { hpBonus: 40, special: "每12s恢复8%HP+25%吸血" },
+    // v2.29 用户微调: 恢复周期13/11/9s + 4名狂暴阈值80%
+    2: { hpBonus: 12, special: "每13s恢复3%HP+HP>50%时10%减伤(魔伤1.5倍)" },
+    3: {
+      hpBonus: 20, // v3.15: 25→20
+      special: "每11s恢复5%HP+HP>40%时12%减伤(魔伤1.5倍)+HP<60%时额外10%攻",
+    },
+    4: {
+      hpBonus: 35, // v3.15: 50→35
+      special: "每9s恢复6%HP+HP>30%时15%减伤(魔伤2倍)+HP<80%时额外15%攻", // v3.15: 8%→6/20%→15/20→15
+    },
   },
   [Race.Mage]: {
-    2: { special: "-20%魔防" },
-    3: { special: "-35%魔防+15%技能吸血" },
-    4: { special: "-50%魔防+30%技能吸血" },
+    2: { special: "-15%魔防" },
+    3: { special: "-20%魔防+冷却-7%+施法30%概率全体+3%攻20s" }, // v3.15c
+    4: { special: "-22%魔防+冷却-9%+施法30%概率全体+3%攻20s" }, // v3.15h: -25/-10→-22/-9
   },
   [Race.Undead]: {
     2: { attackBonus: 5, evasionBonus: 5 },
     3: {
       attackBonus: 10,
-      evasionBonus: 15,
-      special: "复活13s+每秒6%HP/8s+无敌1s",
+      evasionBonus: 10,
+      special: "复活10s+每秒2%HP/8s+无敌2s",
     },
     4: {
-      attackBonus: 20,
-      evasionBonus: 30,
-      special: "复活7s+每秒7%HP/10s+无敌3s",
+      attackBonus: 12, // v2.16 削弱: 15→12
+      evasionBonus: 15, // v2.13b 削弱: 21→15
+      special: "物理减伤9%+复活5s+每秒2.5%HP/10s+无敌2s", // v2.16: 减伤11%→9%
     },
   },
   [Race.Dragon]: {
     2: {},
-    3: { special: "CD-30%+减伤5%+开局3倍减伤6s" },
-    4: { special: "CD-80%+减伤10%+开局4倍减伤10s" },
+  
+    3: { special: "起始冷却-20%+减伤8%+开局2倍减伤6s" }, // v3.15d: 4→8
+    4: { special: "起始冷却-35%+减伤12%+开局2.5倍减伤10s" }, // v3.15d: 6→12
+  },
+  [Race.Holy]: {
+    2: { special: "敌方#增益/#治疗效果-10%：我方全体获得2%相同增益/平分3%治疗效果" }, // v3.15h
+    3: { special: "敌方#增益/#治疗/#控制效果-8%：我方4%增益/平分5%治疗/控制反制5%" },
+    4: { special: "敌方#增益/#治疗/#控制效果-12%：我方6%增益/平分8%治疗/控制反制8%" },
   },
 };
 

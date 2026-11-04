@@ -65,6 +65,7 @@ const RC: Record<string, string> = {
   mage: "#2196f3",
   undead: "#9c27b0",
   dragon: "#ff9800",
+  holy: "#ffd54f",
 };
 
 export const BatchTest: React.FC<Props> = ({

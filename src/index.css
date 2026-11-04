@@ -1,8 +1,87 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background: #0d0d1a; color: #fff; overflow-x: hidden; }
+
+/* ─── 主题变量：深色（默认） / 浅色 ─── */
+:root, [data-theme="dark"] {
+  /* ── 尺寸/字体 token（成熟游戏 UI 惯例） ── */
+  --font-xs: 11px;
+  --font-sm: 12px;
+  --font-md: 14px;
+  --font-lg: 18px;
+  --font-title: 20px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --radius-btn: 8px;
+  --radius-card: 14px;
+  --slot-size: 60px;
+  --btn-h: 34px;
+  --bg: #0a0d12;
+  --bg-grad: linear-gradient(180deg, #111620 0%, #0a0d12 40%, #080a0e 100%);
+  --panel: #131820;
+  --panel-grad: linear-gradient(180deg, #1a2030 0%, #131820 60%, #0f1319 100%);
+  --panel-border: rgba(180,160,120,0.12);
+  --panel-border-bright: rgba(180,160,120,0.28);
+  --text: #e8e6e1;
+  --text-dim: #8a8880;
+  --text-faint: rgba(255,255,255,0.32);
+  --accent: #b4a078;
+  --danger: #d4545a;
+  --ok: #5cc47a;
+  --slot-empty: rgba(255,255,255,0.02);
+  --slot-border: rgba(180,160,120,0.12);
+  --input-bg: #0f141c;
+  --btn-bg: #1a2230;
+  --shadow: 0 4px 24px rgba(0,0,0,0.5);
+  --race-beast: #d4a373;
+  --race-hunter: #7ecb6a;
+  --race-warrior: #ef6b6b;
+  --race-mage: #6fa8ff;
+  --race-undead: #b388ff;
+  --race-dragon: #ffb347;
+  --race-holy: #ffe066;
+  --scroll-track: #1a1a2e;
+  --scroll-thumb: #444;
+  --nav-bg: #141a24;
+  --nav-border: #232b38;
+  --text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+[data-theme="light"] {
+  --bg: #f5f1e8;
+  --bg-grad: linear-gradient(180deg, #faf8f3 0%, #f5f1e8 50%, #ece6d8 100%);
+  --panel: #fffdf9;
+  --panel-grad: linear-gradient(180deg, #fffdf9 0%, #faf7f0 60%, #f3eee2 100%);
+  --panel-border: rgba(90,80,60,0.16);
+  --panel-border-bright: rgba(90,80,60,0.3);
+  --text: #2c2a26;
+  --text-dim: #6b665c;
+  --text-faint: rgba(40,35,25,0.5);
+  --accent: #8a6d3b;
+  --danger: #c0392b;
+  --ok: #1e8e4e;
+  --slot-empty: rgba(0,0,0,0.03);
+  --slot-border: rgba(90,80,60,0.2);
+  --input-bg: #f6f4ef;
+  --btn-bg: #ece9e3;
+  --shadow: 0 4px 20px rgba(60,50,30,0.12);
+  --race-beast: #8a5a2b;
+  --race-hunter: #3d7a2e;
+  --race-warrior: #b03a3a;
+  --race-mage: #2f66c9;
+  --race-undead: #6d3fc4;
+  --race-dragon: #c77d1e;
+  --race-holy: #a8840a;
+  --scroll-track: #e0ddd6;
+  --scroll-thumb: #b5b0a5;
+  --nav-bg: #2a2318;
+  --nav-border: #4a4030;
+  --text-shadow: none;
+}
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #1a1a2e; }
-::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+::-webkit-scrollbar-track { background: var(--scroll-track); }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 3px; }
 
 /* Attacker lunges forward */
 .lunge { animation: lungeAnim 0.35s ease-in-out; }
@@ -13,27 +92,134 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
   100% { transform: translateX(0) scale(1); }
 }
 
-/* Slash effect on target */
-.slash { animation: slashAnim 0.3s ease-out; }
+/* Slash effect on target — physical hit */
+.slash { animation: slashAnim 0.4s ease-out; }
 @keyframes slashAnim {
-  0% { transform: scale(1); filter: brightness(1); }
-  15% { transform: scale(1.08) rotate(-2deg); filter: brightness(2); }
-  30% { transform: scale(0.95) rotate(1deg); filter: brightness(0.6); }
-  60% { transform: scale(1.02); filter: brightness(1.2); }
+  0% { transform: scale(1); filter: brightness(1) hue-rotate(0); }
+  12% { transform: scale(1.1) rotate(-3deg); filter: brightness(2.2) hue-rotate(0); }
+  25% { transform: scale(0.93) rotate(2deg); filter: brightness(0.5); }
+  50% { transform: scale(1.04); filter: brightness(1.4); }
   100% { transform: scale(1); filter: brightness(1); }
 }
 
-/* Shake for skill hit */
-.shake { animation: shakeAnim 0.3s ease-in-out; }
+/* Shake for skill hit — magical */
+.shake { animation: shakeAnim 0.35s ease-in-out; }
 @keyframes shakeAnim {
   0%,100% { transform: translateX(0); }
-  20% { transform: translateX(-5px); }
-  40% { transform: translateX(5px); }
-  60% { transform: translateX(-3px); }
-  80% { transform: translateX(2px); }
+  15% { transform: translateX(-6px) scale(1.02); }
+  30% { transform: translateX(6px) scale(0.98); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+  80% { transform: translateX(-1px); }
 }
 
+/* Pulse — pure damage / generic */
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+/* Casting pulse */
+.castPulse { animation: castPulse 0.8s ease-in-out infinite; }
+@keyframes castPulse {
+  0%,100% { opacity: 1; text-shadow: 0 0 4px rgba(255,171,64,0.6); }
+  50% { opacity: 0.5; text-shadow: 0 0 8px rgba(255,171,64,0.9); }
+}
+
+/* ─── 手机端适配 ─── */
+@media (max-width: 600px) {
+  body { font-size: 14px; }
+  [data-grid] { gap: 2px !important; }
+  /* 战斗顶栏/面板头按钮组换行 */
+  .topbar-controls, .panel-controls { flex-wrap: wrap; }
+  .topbar-controls button, .panel-controls button { padding: 3px 7px !important; font-size: 10px !important; }
+  /* 统计条：只显示时间+击杀，隐藏总输出 */
+  .battle-stats .stat-dmg { display: none !important; }
+  /* 羁绊胶囊截断 */
+  .bond-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 一键部署精简 */
+  .deploy-btn { padding: 0 9px !important; font-size: 10px !important; height: 28px !important; }
+  .deploy-btn .deploy-word { display: none; }
+  /* 战斗格子缩小 */
+  [data-grid] > div > div { height: 46px !important; }
+  [data-grid] > div > div span { font-size: 9px !important; }
+  /* 演出大字区压缩 */
+  .cinema-detail-card { max-width: 88% !important; padding: 6px 10px !important; font-size: 11px !important; }
+  /* 保存区 */
+  .save-area { gap: 4px !important; }
+  .save-area input { width: 54px !important; }
+  /* 移除区 */
+  .trash-zone { height: 34px !important; font-size: 10px !important; }
+  /* 提示文字隐藏细节 */
+  .tip-text span.tip-long { display: none; }
+  /* 版本号隐藏 */
+  .version-tag { display: none !important; }
+}
+/* 战斗单位卡小屏精简 */
+@media (max-width: 600px) {
+  .unit-card { height: 46px !important; padding: 2px 3px !important; gap: 2px !important; }
+  .unit-avatar { display: none !important; }
+  .unit-hp-pct { display: none !important; }
+  .unit-card span { font-size: 9px !important; }
+  .unit-race-badge { font-size: 6px !important; padding: 0 2px !important; }
+}
+@media (max-width: 480px) {
+  /* 更小屏：隐藏"施法"副标题、羁绊胶囊完全折叠为计数 */
+  .topbar-title { font-size: 13px !important; }
+  .panel-header-title { font-size: 15px !important; }
+  /* 战斗区子tab文字缩小 */
+  .battle-subtab button { padding: 8px 0 !important; font-size: 10px !important; }
+}
+/* 演出大字防溢出 */
+/* 战斗单位卡小屏精简 */
+@media (max-width: 600px) {
+  .unit-card { height: 46px !important; padding: 2px 3px !important; gap: 2px !important; }
+  .unit-avatar { display: none !important; }
+  .unit-hp-pct { display: none !important; }
+  .unit-card span { font-size: 9px !important; }
+  .unit-race-badge { font-size: 6px !important; padding: 0 2px !important; }
+}
+@media (max-width: 480px) {
+  .cinema-big { letter-spacing: 2px !important; }
+}
+@keyframes arrowPulse {
+  0% { opacity: 0; stroke-dashoffset: 100; }
+  100% { opacity: 1; stroke-dashoffset: 0; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* v3: 暴击大字弹出 */
+@keyframes critPop {
+  0% { transform: translate(-50%,-50%) scale(0.5) rotate(-8deg); opacity: 0; }
+  20% { transform: translate(-50%,-60%) scale(1.6) rotate(3deg); opacity: 1; }
+  45% { transform: translate(-50%,-75%) scale(1.1) rotate(0); }
+  100% { transform: translate(-50%,-130%) scale(1) rotate(0); opacity: 0; }
+}
+.critPop { animation: critPop 0.9s ease-out forwards; }
+/* v3: 技能命中闪光圈 */
+@keyframes skillRing {
+  0% { transform: translate(-50%,-50%) scale(0.3); opacity: 0.9; }
+  100% { transform: translate(-50%,-50%) scale(2.2); opacity: 0; }
+}
+.skillRing { animation: skillRing 0.45s ease-out forwards; }
+
+/* Floating damage/heal — enhanced */
+@keyframes floatUp2 {
+  0% { opacity: 1; transform: translate(-50%,-50%) scale(0.6); }
+  15% { opacity: 1; transform: translate(-50%,-70%) scale(1.3); }
+  40% { opacity: 1; transform: translate(-50%,-90%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%,-160%) scale(0.9); }
+}
+
+/* Skill bubble — enhanced */
+@keyframes skillBubble {
+  0% { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.7); }
+  15% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.1); }
+  25% { transform: translateX(-50%) translateY(-2px) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-30px) scale(0.9); }
+}
+
+/* Old floatUp for dialogue lines */
 @keyframes floatUp {
   0% { opacity: 1; transform: translate(-50%,-50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%,-120%) scale(1.2); }
@@ -43,4 +229,74 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
   20% { transform: translateY(-5px) scale(1); }
   80% { opacity: 1; }
   100% { opacity: 0; transform: translateY(-40px) scale(0.9); }
+}
+
+/* Death animation — dramatic */
+.deathAnim { animation: deathAnimKey 0.6s ease-in forwards; }
+@keyframes deathAnimKey {
+  0% { transform: scale(1) rotate(0); filter: brightness(1); }
+  20% { transform: scale(1.1) rotate(0); filter: brightness(2) sepia(1) hue-rotate(-50deg); }
+  40% { transform: scale(0.95) rotate(-8deg); filter: brightness(0.5) grayscale(0.5); }
+  100% { transform: scale(0.85) rotate(-15deg); filter: brightness(0.4) grayscale(0.8); opacity: 0.4; }
+}
+.deadState { transform: scale(0.85) rotate(-15deg); filter: brightness(0.4) grayscale(0.8); opacity: 0.4; }
+
+/* Kill Feed slide-in */
+@keyframes killFeedIn {
+  0% { opacity: 0; transform: translateY(-10px) scale(0.9); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ─── TeamSetup 交互质感（Qwen 暗金王座方案） ─── */
+.race-btn {
+  transition: all .15s ease;
+}
+.race-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.25);
+  box-shadow: 0 0 10px var(--rc-glow, rgba(255,255,255,0.15));
+}
+.race-btn:active {
+  transform: translateY(0);
+}
+.slot-card {
+  transition: all .15s ease;
+}
+.slot-card:hover {
+  transform: scale(1.03);
+  box-shadow: inset 0 0 12px rgba(94,158,255,0.08), 0 0 6px rgba(94,158,255,0.1);
+}
+.trash-zone {
+  transition: all .15s ease;
+}
+.trash-zone:hover, .trash-zone.dragover {
+  border-color: rgba(212,84,90,0.5) !important;
+  color: rgba(212,84,90,0.75) !important;
+  background: rgba(212,84,90,0.08) !important;
+  box-shadow: inset 0 0 12px rgba(212,84,90,0.1);
+}
+.race-header {
+  transition: background .15s;
+}
+.race-header:hover {
+  background: rgba(255,255,255,0.03) !important;
+}
+.deploy-btn {
+  transition: all .15s ease;
+}
+.deploy-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.3);
+  box-shadow: 0 0 8px var(--rc-glow, rgba(255,255,255,0.2));
+}
+.start-btn {
+  transition: all .2s ease;
+}
+.start-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+.start-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(92,196,122,0.25), inset 0 2px 4px rgba(0,0,0,0.3);
 }

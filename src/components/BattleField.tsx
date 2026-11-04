@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import { BattleState, Row, ROW_NAMES, ArenaUnit } from "../types";
 import UnitSprite from "./UnitSprite";
 
@@ -16,6 +16,7 @@ const bondRC: Record<string, string> = {
   mage: "#2196f3",
   undead: "#9c27b0",
   dragon: "#ff9800",
+  holy: "#ffd54f",
 };
 const bondNM: Record<string, string> = {
   beast: "兽",
@@ -24,30 +25,27 @@ const bondNM: Record<string, string> = {
   mage: "法",
   undead: "亡",
   dragon: "龙",
+  holy: "圣",
 };
 
-/** Find a unit's grid position (row,col) in the layout, considering row ordering */
-function unitPos(
-  u: ArenaUnit,
-  side: "ally" | "enemy"
-): { r: number; c: number; y: number } {
-  const layoutRows =
-    side === "ally"
-      ? [Row.Back, Row.Mid, Row.Front]
-      : [Row.Front, Row.Mid, Row.Back];
-  const r = layoutRows.indexOf(u.row);
-  // Approximate position in the battlefield: row (0-2) × cell height + half height
-  return { r, c: u.col, y: r * 78 + 38 };
-}
+// Damage type → arrow color
+const DMG_ARROW_COLOR: Record<string, string> = {
+  physical: "#ff5252",
+  magical: "#b388ff",
+  pure: "#ffffff",
+};
 
-/** Get target unit on the other side, or null */
 function getTarget(battle: BattleState, u: ArenaUnit): ArenaUnit | null {
   if (!u.lastHitTarget) return null;
-  // Check both current and last hit target - the target might have moved
   const target = battle.units.find((x) => x.id === u.lastHitTarget);
   if (target && !target.isDead) return target;
   return null;
 }
+
+// Cell layout constants — must match the grid rendering below
+const CELL_W = 86;  // approximate cell width
+const CELL_H = 84;  // approximate cell height
+const ROW_LABEL_W = 26;
 
 const BattleField: React.FC<Props> = ({
   battle,
@@ -55,7 +53,6 @@ const BattleField: React.FC<Props> = ({
   onUnitClick,
   focusUnit,
 }) => {
-  // Build fixed 3x3 grid from unit positions
   const grid = useMemo(() => {
     const g: (ArenaUnit | null)[][] = [
       [null, null, null],
@@ -63,13 +60,7 @@ const BattleField: React.FC<Props> = ({
       [null, null, null],
     ];
     for (const u of battle.units) {
-      if (
-        u.team === side &&
-        u.row >= 0 &&
-        u.row <= 2 &&
-        u.col >= 0 &&
-        u.col <= 2
-      ) {
+      if (u.team === side && u.row >= 0 && u.row <= 2 && u.col >= 0 && u.col <= 2) {
         g[u.row][u.col] = u;
       }
     }
@@ -80,54 +71,74 @@ const BattleField: React.FC<Props> = ({
   const won = battle.winner === side;
   const bonds = battle.bonds?.[side] || [];
   const now = battle.time;
+  // v3: 动态测量格子尺寸（修复箭头偏移——原 CELL_W=86 近似值）
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [cellW, setCellW] = useState(CELL_W);
+  const [cellH, setCellH] = useState(CELL_H);
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    const measure = () => {
+      const gridEl = el.querySelector("[data-grid]");
+      if (!gridEl) return;
+      const rect = gridEl.getBoundingClientRect();
+      setCellW(rect.width / 3);
+      const rowEl = gridEl.firstElementChild as HTMLElement | null;
+      if (rowEl) setCellH(rowEl.getBoundingClientRect().height);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // v3: 全局格子坐标（跨面板箭头用）——每 tick 测量 DOM 实际位置
+  const cellRectsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  useEffect(() => {
+    const map = new Map<string, { x: number; y: number }>();
+    document.querySelectorAll("[data-cell-id]").forEach((el) => {
+      const id = el.getAttribute("data-cell-id");
+      if (!id) return;
+      const r = el.getBoundingClientRect();
+      map.set(id, { x: r.left + r.width / 2, y: r.top + r.height / 2 });
+    });
+    cellRectsRef.current = map;
+  }, [now, battle.units]);
 
-  // Find active attackers (recent attacks within 0.8s) and their targets
+  // Attack arrows — colored by damage type, longer duration
   const arrowLines = useMemo(() => {
     const lines: {
-      x1: number;
-      y1: number;
-      x2: number;
-      y2: number;
-      color: string;
+      x1: number; y1: number; x2: number; y2: number;
+      color: string; isSkill: boolean; t: number;
     }[] = [];
     if (now <= 0) return lines;
-    // Field dimensions: ally is left side, enemy is right side
-    // Each cell is roughly 60px wide x 76px tall
-    // The field has 3 rows with labels (~26px on left per row)
     for (const u of battle.units) {
       if (u.team !== side) continue;
-      if (!u.lastAction?.time || now - u.lastAction.time > 0.8) continue;
+      if (!u.lastAction?.time || now - u.lastAction.time > 1.2) continue;
       const target = getTarget(battle, u);
       if (!target || target.team === side) continue;
-      // Compute positions relative to this field
-      // Source position (within this field)
-      const srcR =
-        side === "ally"
-          ? [Row.Back, Row.Mid, Row.Front].indexOf(u.row)
-          : [Row.Front, Row.Mid, Row.Back].indexOf(u.row);
-      const x1 = 26 + u.col * 60 + 30;
-      const y1 = srcR * 78 + 38;
-      // Target position (need to add field offset - ~340px gap between fields)
-      const dstR =
-        target.team === "ally"
-          ? [Row.Back, Row.Mid, Row.Front].indexOf(target.row)
-          : [Row.Front, Row.Mid, Row.Back].indexOf(target.row);
-      // The other field is ~340px to the right (ally field) or left (enemy field)
-      const fieldGap = side === "ally" ? 340 : -340;
-      const x2 = 26 + target.col * 60 + 30 + fieldGap;
-      const y2 = dstR * 78 + 38;
-      lines.push({
-        x1,
-        y1,
-        x2,
-        y2,
-        color: u.team === "ally" ? "#4fc3f7" : "#ef5350",
-      });
+
+      // v3: 全局 DOM 坐标（跨面板正确）
+      const srcRect = cellRectsRef.current.get(u.id);
+      const dstRect = cellRectsRef.current.get(target.id);
+      if (!srcRect || !dstRect) continue;
+      const x1 = srcRect.x;
+      const y1 = srcRect.y;
+      const x2 = dstRect.x;
+      const y2 = dstRect.y;
+
+      const dmgType = u.lastDamage?.type || "physical";
+      const color = DMG_ARROW_COLOR[dmgType] || DMG_ARROW_COLOR.physical;
+      // v3: 仅技能攻击显示箭头（普攻不显示，避免杂乱）
+      const isSkill = !!u.lastSkillCast && now - u.lastSkillCast.time < 0.9;
+      if (!isSkill) continue;
+
+      lines.push({ x1, y1, x2, y2, color, isSkill, t: u.lastSkillCast!.time });
     }
-    return lines;
+    // v3: 只显示最近的 2 条箭头
+    lines.sort((a, b) => b.t - a.t);
+    return lines.slice(0, 2);
   }, [battle.units, side, now]);
 
-  // Enemy rows are reversed for mirror layout
   const rowOrder =
     side === "ally"
       ? [Row.Back, Row.Mid, Row.Front]
@@ -135,68 +146,26 @@ const BattleField: React.FC<Props> = ({
 
   return (
     <div
+      ref={panelRef}
       style={{
         flex: 1,
         display: "flex",
         flexDirection: "column",
-        gap: 4,
+        gap: 3,
         padding: 6,
         background:
           side === "ally"
-            ? "linear-gradient(180deg, #1a237e66, #0d47a133)"
-            : "linear-gradient(180deg, #b71c1c66, #880e4f33)",
+            ? "linear-gradient(180deg, #1a237e33, #0d47a122)"
+            : "linear-gradient(180deg, #b71c1c33, #880e4f22)",
         borderRadius: 10,
         border: isFinished
           ? `4px solid ${won ? "#4caf50" : "#f44336"}`
-          : "4px solid transparent",
+          : `1px solid ${side === "ally" ? "#1a237e44" : "#b71c1c44"}`,
         position: "relative",
       }}
     >
       {/* SVG overlay for attack arrows */}
-      <svg
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          zIndex: 5,
-          pointerEvents: "none",
-          overflow: "visible",
-        }}
-      >
-        {arrowLines.map((line, i) => (
-          <g key={i}>
-            <line
-              x1={line.x1}
-              y1={line.y1}
-              x2={line.x2}
-              y2={line.y2}
-              stroke={line.color}
-              strokeWidth={2}
-              strokeOpacity={0.6}
-              markerEnd={`url(#arrow${side})`}
-            />
-          </g>
-        ))}
-        <defs>
-          <marker
-            id={`arrow${side}`}
-            viewBox="0 0 10 10"
-            refX={9}
-            refY={5}
-            markerWidth={6}
-            markerHeight={6}
-            orient="auto"
-          >
-            <path
-              d="M 0 0 L 10 5 L 0 10 z"
-              fill={side === "ally" ? "#4fc3f7" : "#ef5350"}
-              fillOpacity={0.6}
-            />
-          </marker>
-        </defs>
-      </svg>
+      {/* v3: 攻击箭头已移除（技能演出流程内实现） */}
 
       {/* Result overlay */}
       {isFinished && (
@@ -211,107 +180,99 @@ const BattleField: React.FC<Props> = ({
             zIndex: 10,
             color: won ? "#4caf50" : "#f44336",
             textShadow: "0 2px 12px rgba(0,0,0,0.9)",
-            background: "rgba(0,0,0,0.7)",
-            padding: "4px 20px",
+            background: "rgba(0,0,0,0.75)",
+            padding: "6px 24px",
             borderRadius: 8,
+            border: `1px solid ${won ? "#4caf5055" : "#f4433655"}`,
           }}
         >
-          {won ? "胜利" : "败北"}
+          {won ? "胜 利" : "败 北"}
         </div>
       )}
 
       {/* Team label */}
-      <div
-        style={{
-          textAlign: "center",
-          fontSize: 13,
-          fontWeight: 700,
-          color: "#ccc",
-        }}
-      >
-        {side === "ally" ? "我方" : "敌方"}
+      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: side === "ally" ? "#4fc3f7" : "#ef5350" }}>
+        {side === "ally" ? "🟦 我方" : "🟥 敌方"}
       </div>
 
-      {/* Active bonds — read from engine, not computed in UI */}
+      {/* Active bonds */}
       {bonds.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            gap: 3,
-            justifyContent: "center",
-            flexWrap: "wrap",
-            marginBottom: 2,
-          }}
-        >
+        <div style={{ display: "flex", gap: 3, justifyContent: "center", flexWrap: "wrap", marginBottom: 2 }}>
           {bonds.map((b: any) => (
-            <span
-              key={b.race}
-              style={{
-                fontSize: 8,
-                padding: "1px 5px",
-                borderRadius: 3,
-                background: bondRC[b.race] || "#555",
-                color: "#000",
-                fontWeight: 700,
-              }}
-            >
+            <span key={b.race} style={{
+              fontSize: 9, padding: "2px 6px", borderRadius: 4,
+              background: `${bondRC[b.race] || "#555"}33`,
+              color: bondRC[b.race] || "#555",
+              fontWeight: 700, border: `1px solid ${bondRC[b.race] || "#555"}55`,
+            }}>
               {bondNM[b.race] || b.race}×{b.count}🌟
             </span>
           ))}
         </div>
       )}
 
-      {/* 3x3 Grid — fixed positions by (row, col) */}
-      {rowOrder.map((row) => (
-        <div
-          key={row}
-          style={{
-            display: "flex",
-            gap: 3,
-            alignItems: "center",
-            minHeight: 76,
-          }}
-        >
-          <div
+      {/* v3: 实时战斗统计条 */}
+      <div
+        className="battle-stats"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: 11,
+          color: "var(--text-dim)",
+          padding: "2px 4px 4px",
+          flexWrap: "wrap",
+          gap: 4,
+        }}
+      >
+        <span>
+          ☠️ 击杀{" "}
+          <b style={{ color: "var(--text)" }}>
+            {battle.units.filter((u) => u.team === side && u.isDead).length}
+          </b>
+          /{battle.units.filter((u) => u.team === side).length}
+        </span>
+        <span className="stat-dmg">
+          ⚔ 总输出{" "}
+          <b
             style={{
-              width: 26,
-              fontSize: 10,
-              color: "#666",
-              fontWeight: 600,
-              textAlign: "center",
-              flexShrink: 0,
+              color: "var(--accent)",
+              fontWeight: 700,
             }}
           >
+            {battle.stats
+              ?.filter((s) => s.team === side)
+              .reduce((a, s) => a + (s.totalDamageDealt || 0), 0)
+              .toLocaleString()}
+          </b>
+        </span>
+        <span>
+          ⏱{" "}
+          <b style={{ color: "var(--text)" }}>
+            {battle.time.toFixed(1)}s
+          </b>
+        </span>
+      </div>
+      {/* 3×3 Grid */}
+      {rowOrder.map((row) => (
+        <div data-grid key={row} style={{ display: "flex", gap: 3, alignItems: "center", minHeight: CELL_H }}>
+          <div style={{
+            width: ROW_LABEL_W, fontSize: 9, color: "var(--text-dim)", fontWeight: 600,
+            textAlign: "center", flexShrink: 0,
+          }}>
             {ROW_NAMES[row]}
           </div>
-          <div
-            style={{
-              flex: 1,
-              display: "grid",
-              gridTemplateColumns: "repeat(3,1fr)",
-              gap: 3,
-            }}
-          >
+          <div style={{
+            flex: 1, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 3,
+          }}>
             {[0, 1, 2].map((col) => {
               const unit = grid[row][col];
               return unit ? (
-                <div
-                  style={{ position: "relative" }}
-                  key={`${unit.id}-${unit.row}-${unit.col}`}
-                >
-                  {row === 0 && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: -2,
-                        left: 2,
-                        fontSize: 7,
-                        color: "#ffeb3b",
-                        zIndex: 2,
-                      }}
-                    >
-                      ⚔
-                    </div>
+                <div data-cell-id={unit.id} style={{ position: "relative" }} key={`${unit.id}-${unit.row}-${unit.col}`}>
+                  {row === Row.Front && (
+                    <div style={{
+                      position: "absolute", top: -2, left: 2, fontSize: 8,
+                      color: "#ffeb3b", zIndex: 2, fontWeight: 700,
+                    }}>⚔</div>
                   )}
                   <UnitSprite
                     key={unit.id}
@@ -319,58 +280,15 @@ const BattleField: React.FC<Props> = ({
                     onClick={() => onUnitClick?.(unit)}
                     focused={focusUnit?.id === unit.id}
                   />
-                  {/* Show attack indicator */}
-                  {unit.lastAction &&
-                    !unit.lastAction.isTarget &&
-                    now - unit.lastAction.time < 0.5 && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: -4,
-                          right: -4,
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: "#ffeb3b",
-                          zIndex: 5,
-                          animation: "pulse 0.5s infinite",
-                        }}
-                      />
-                    )}
-                  {/* Target indicator */}
-                  {unit.lastAction?.isTarget &&
-                    now - unit.lastAction.time < 0.5 && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: -4,
-                          right: -4,
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: "#f44336",
-                          zIndex: 5,
-                          animation: "pulse 0.5s infinite",
-                        }}
-                      />
-                    )}
                 </div>
               ) : (
-                <div
-                  key={`e-${row}-${col}`}
-                  style={{
-                    height: 74,
-                    borderRadius: 6,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 10,
-                    color: "#333",
-                    border: "1px dashed #2a2a3e",
-                  }}
-                >
-                  空
-                </div>
+                <div key={`e-${row}-${col}`} style={{
+                  height: 80, borderRadius: 8, display: "flex",
+                  border: "1.5px dashed var(--panel-border)",
+                  alignItems: "center", justifyContent: "center",
+                  fontSize: 11, color: "var(--text-faint)",
+                  background: "var(--slot-empty)",
+                }}>空</div>
               );
             })}
           </div>

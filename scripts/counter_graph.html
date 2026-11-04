@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <title>G3 v2.0 种族克制关系图</title>
+    <style>
+      body {
+        margin: 0;
+        background: #0d0d1a;
+        color: #fff;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: #888;
+        font-size: 12px;
+        margin-bottom: 16px;
+      }
+      .wrap {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: flex-start;
+      }
+      svg {
+        background: #111;
+        border-radius: 12px;
+      }
+      .legend {
+        background: #111;
+        border-radius: 12px;
+        padding: 14px 18px;
+        font-size: 12px;
+        color: #ccc;
+        max-width: 340px;
+      }
+      .legend h3 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        color: #4a9eff;
+      }
+      .lg-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 5px 0;
+      }
+      .lg-arrow {
+        display: inline-flex;
+        align-items: center;
+      }
+      .strong {
+        color: #ff5252;
+        font-weight: 700;
+      }
+      .weak {
+        color: #ffab40;
+        font-weight: 700;
+      }
+      .bar {
+        display: inline-block;
+        width: 60px;
+        height: 6px;
+        border-radius: 3px;
+        margin: 0 6px;
+        vertical-align: middle;
+      }
+      table {
+        border-collapse: collapse;
+        margin-top: 8px;
+        font-size: 11px;
+      }
+      td,
+      th {
+        padding: 2px 8px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>⚔️ G3 v2.0 种族克制关系</h1>
+    <div class="sub">基于 100 场/组批量测试 · 胜率 ≥60% 为克制</div>
+
+    <div class="wrap">
+      <svg id="graph" width="620" height="620"></svg>
+
+      <div class="legend">
+        <h3>📊 克制强度</h3>
+        <div class="lg-row">
+          <span class="lg-arrow">➤</span>
+          <span class="strong">红色实线 = 强克制（≥80%）</span>
+        </div>
+        <div class="lg-row">
+          <span class="lg-arrow">➤</span>
+          <span class="weak">橙色虚线 = 中等克制（60-79%）</span>
+        </div>
+        <div class="lg-row">
+          <span class="lg-arrow">↔</span>
+          <span style="color: #888">灰色 = 均势（40-60%）</span>
+        </div>
+        <h3 style="margin-top: 14px">📈 综合胜率</h3>
+        <div id="bars"></div>
+        <h3 style="margin-top: 14px">🔗 克制环</h3>
+        <div
+          style="
+            font-family: monospace;
+            font-size: 11px;
+            line-height: 1.8;
+            color: #9e9e9e;
+          "
+        >
+          猎人 →(94) 亡灵 →(82) 法师 →(90) 猎人<br />
+          战士 →(100) 猎人 →(94) 亡灵 →(56) 战士<br />
+          战士 →(92) 龙族 →(67) 亡灵 →(82) 法师 →(62) 战士<br />
+          龙族 →(64) 法师 →(62) 兽族
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const RACES = [
+        { id: "beast", name: "兽族", color: "#8d6e63", x: 310, y: 90 },
+        { id: "undead", name: "亡灵", color: "#9c27b0", x: 520, y: 245 },
+        { id: "dragon", name: "龙族", color: "#ff9800", x: 470, y: 490 },
+        { id: "mage", name: "法师", color: "#2196f3", x: 150, y: 490 },
+        { id: "hunter", name: "猎人", color: "#4caf50", x: 100, y: 245 },
+        { id: "warrior", name: "战士", color: "#f44336", x: 310, y: 565 },
+      ];
+      // 行 = 该种族 vs 列种族胜率（100场）
+      const MATRIX = {
+        beast: {
+          beast: 49,
+          undead: 47,
+          dragon: 44,
+          mage: 34,
+          hunter: 26,
+          warrior: 86,
+        },
+        undead: {
+          beast: 53,
+          undead: 54,
+          dragon: 43,
+          mage: 53,
+          hunter: 20,
+          warrior: 79,
+        },
+        dragon: {
+          beast: 56,
+          undead: 57,
+          dragon: 58,
+          mage: 82,
+          hunter: 38,
+          warrior: 22,
+        },
+        mage: {
+          beast: 66,
+          undead: 47,
+          dragon: 18,
+          mage: 45,
+          hunter: 72,
+          warrior: 42,
+        },
+        hunter: {
+          beast: 74,
+          undead: 80,
+          dragon: 62,
+          mage: 28,
+          hunter: 53,
+          warrior: 4,
+        },
+        warrior: {
+          beast: 14,
+          undead: 21,
+          dragon: 78,
+          mage: 58,
+          hunter: 96,
+          warrior: 46,
+        },
+      };
+      const TOTAL = {
+        beast: 47.4,
+        undead: 49.6,
+        dragon: 51.0,
+        mage: 49.0,
+        hunter: 49.6,
+        warrior: 53.4,
+      };
+
+      const NS = "http://www.w3.org/2000/svg";
+      const svg = document.getElementById("graph");
+
+      // 背景网格
+      const defs = document.createElementNS(NS, "defs");
+      const markerS = document.createElementNS(NS, "marker");
+      markerS.setAttribute("id", "arrowS");
+      markerS.setAttribute("markerWidth", "10");
+      markerS.setAttribute("markerHeight", "10");
+      markerS.setAttribute("refX", "9");
+      markerS.setAttribute("refY", "3");
+      markerS.setAttribute("orient", "auto");
+      const pathS = document.createElementNS(NS, "path");
+      pathS.setAttribute("d", "M0,0 L9,3 L0,6 Z");
+      pathS.setAttribute("fill", "#ff5252");
+      markerS.appendChild(pathS);
+      defs.appendChild(markerS);
+      const markerW = document.createElementNS(NS, "marker");
+      markerW.setAttribute("id", "arrowW");
+      markerW.setAttribute("markerWidth", "10");
+      markerW.setAttribute("markerHeight", "10");
+      markerW.setAttribute("refX", "9");
+      markerW.setAttribute("refY", "3");
+      markerW.setAttribute("orient", "auto");
+      const pathW = document.createElementNS(NS, "path");
+      pathW.setAttribute("d", "M0,0 L9,3 L0,6 Z");
+      pathW.setAttribute("fill", "#ffab40");
+      markerW.appendChild(pathW);
+      defs.appendChild(markerW);
+      svg.appendChild(defs);
+
+      function edgePoints(a, b, offset) {
+        const dx = b.x - a.x,
+          dy = b.y - a.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const ux = dx / len,
+          uy = dy / len;
+        const r1 = 52,
+          r2 = 52;
+        const sx = a.x + ux * (r1 + offset),
+          sy = a.y + uy * (r1 + offset);
+        const ex = b.x - ux * (r2 + offset),
+          ey = b.y - uy * (r2 + offset);
+        return { sx, sy, ex, ey, midx: (sx + ex) / 2, midy: (sy + ey) / 2 };
+      }
+
+      // 绘制克制箭头
+      const STRONG = [],
+        WEAK = [];
+      for (const a of RACES) {
+        for (const b of RACES) {
+          if (a.id === b.id) continue;
+          const w = MATRIX[a.id][b.id];
+          if (w >= 80) STRONG.push({ a, b, w });
+          else if (w >= 60) WEAK.push({ a, b, w });
+        }
+      }
+
+      function drawArrows(list, cls, markerId, color, dash) {
+        list.forEach(({ a, b, w }, idx) => {
+          const off = (idx % 3) * 6 - 6;
+          const p = edgePoints(a, b, off);
+          const line = document.createElementNS(NS, "line");
+          line.setAttribute("x1", p.sx);
+          line.setAttribute("y1", p.sy);
+          line.setAttribute("x2", p.ex);
+          line.setAttribute("y2", p.ey);
+          line.setAttribute("stroke", color);
+          line.setAttribute("stroke-width", cls === "strong" ? 3 : 2);
+          line.setAttribute("stroke-dasharray", dash);
+          line.setAttribute("marker-end", `url(#${markerId})`);
+          line.setAttribute("opacity", cls === "strong" ? 0.95 : 0.8);
+          svg.appendChild(line);
+          const tx = document.createElementNS(NS, "text");
+          tx.setAttribute("x", p.midx);
+          tx.setAttribute("y", p.midy - 4);
+          tx.setAttribute("text-anchor", "middle");
+          tx.setAttribute("font-size", 11);
+          tx.setAttribute("font-weight", "700");
+          tx.setAttribute("fill", color);
+          tx.textContent = w + "%";
+          svg.appendChild(tx);
+        });
+      }
+      drawArrows(STRONG, "strong", "arrowS", "#ff5252", "");
+      drawArrows(WEAK, "weak", "arrowW", "#ffab40", "6,3");
+
+      // 绘制节点
+      RACES.forEach((r) => {
+        const g = document.createElementNS(NS, "g");
+        const c = document.createElementNS(NS, "circle");
+        c.setAttribute("cx", r.x);
+        c.setAttribute("cy", r.y);
+        c.setAttribute("r", 46);
+        c.setAttribute("fill", r.color);
+        c.setAttribute("fill-opacity", 0.2);
+        c.setAttribute("stroke", r.color);
+        c.setAttribute("stroke-width", 3);
+        g.appendChild(c);
+        const t1 = document.createElementNS(NS, "text");
+        t1.setAttribute("x", r.x);
+        t1.setAttribute("y", r.y - 2);
+        t1.setAttribute("text-anchor", "middle");
+        t1.setAttribute("font-size", 20);
+        t1.setAttribute("font-weight", "800");
+        t1.setAttribute("fill", "#fff");
+        t1.textContent = r.name;
+        g.appendChild(t1);
+        const t2 = document.createElementNS(NS, "text");
+        t2.setAttribute("x", r.x);
+        t2.setAttribute("y", r.y + 18);
+        t2.setAttribute("text-anchor", "middle");
+        t2.setAttribute("font-size", 12);
+        t2.setAttribute("font-weight", "600");
+        t2.setAttribute("fill", r.color);
+        t2.textContent = TOTAL[r.id].toFixed(1) + "%";
+        g.appendChild(t2);
+        svg.appendChild(g);
+      });
+
+      // 综合胜率条
+      const bars = document.getElementById("bars");
+      Object.entries(TOTAL)
+        .sort((x, y) => y[1] - x[1])
+        .forEach(([id, pct]) => {
+          const r = RACES.find((x) => x.id === id);
+          const row = document.createElement("div");
+          row.className = "lg-row";
+          const label = document.createElement("span");
+          label.style.width = "34px";
+          label.style.display = "inline-block";
+          label.style.color = r.color;
+          label.style.fontWeight = "700";
+          label.textContent = r.name;
+          const bar = document.createElement("span");
+          bar.className = "bar";
+          bar.style.background = `linear-gradient(90deg, ${r.color} ${pct}%, #2a2a3e ${pct}%)`;
+          const pctTxt = document.createElement("span");
+          pctTxt.textContent = pct.toFixed(1) + "%";
+          pctTxt.style.color =
+            pct >= 60 ? "#ff5252" : pct <= 45 ? "#ffab40" : "#ccc";
+          pctTxt.style.fontWeight = "700";
+          row.appendChild(label);
+          row.appendChild(bar);
+          row.appendChild(pctTxt);
+          bars.appendChild(row);
+        });
+    </script>
+  </body>
+</html>

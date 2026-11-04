@@ -42,3 +42,21 @@ docs/
 - 每次提交前运行 `npm run typecheck` 确保无类型错误
 - 每次提交前运行 `npm run build` 确保构建通过
 - 主分支（main）提交后运行 `npm run deploy` 部署到 gh-pages
+
+## 待办 Backlog
+
+### 统计系统
+
+- [ ] 角色面板 CSV 导出（52 角色 Lv.100 面板数据，用于 AI 验证伤害公式）
+- [ ] 按技能拆分输出统计（追踪每个 skillId 的伤害/次数）
+- [ ] SkillRegistry handler 中标记 damageType 用于承伤统计
+
+### 批量测试
+
+- [ ] 预设多种族 matchup（兽vs猎、猎vs法、战vs亡、龙混搭、同族内战）
+- [ ] 首杀时间 / 减员时间线统计
+- [ ] 护盾吸收量追踪（shieldAbsorbed 字段已预留）
+
+### 战斗规则
+
+- [ ] 多阵容交叉测试框架（自动切换 lineup 跑 N 场）

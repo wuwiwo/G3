@@ -7,6 +7,7 @@ export enum Race {
   Mage = "mage",
   Undead = "undead",
   Dragon = "dragon",
+  Holy = "holy",
 }
 export const RACE_NAMES: Record<Race, string> = {
   [Race.Beast]: "兽族",
@@ -15,6 +16,7 @@ export const RACE_NAMES: Record<Race, string> = {
   [Race.Mage]: "法师",
   [Race.Undead]: "亡灵",
   [Race.Dragon]: "龙族",
+  holy: "圣",
 };
 export enum Row {
   Front = 0,
@@ -50,6 +52,7 @@ export enum StatusType {
   Shield = "shield",
   Poison = "poison",
   AntiHeal = "antiHeal",
+  Regen = "regen",
 }
 export interface StatusEffect {
   type: StatusType;
@@ -92,6 +95,7 @@ export interface Skill {
     fixedAdd?: number;
     targetMaxHpRatio?: number;
     targetLostHpRatio?: number;
+    targetAtkRatio?: number;
   };
   effects?: StatusEffect[];
   interruptOnAttack?: boolean;
@@ -150,7 +154,7 @@ export interface ArenaUnit {
   lastHitTarget?: string;
   lastHitBy?: string;
   hasRevived?: boolean;
-  reviving?: { timer: number; hpPct: number; invTimer?: number };
+  reviving?: { timer: number; hpPct: number; invTimer?: number; regenPct?: number; regenDur?: number };
   invincibleTimer?: number;
   // Summon system
   summonerId?: string;
@@ -170,6 +174,145 @@ export interface ArenaUnit {
   // Runtime engine flags
   _wasHitDuringCast?: boolean;
   _wasDamagedDuringCast?: boolean;
+  _statusSnapshot?: { type: string; remainingSeconds: number; stacks: number; value?: number }[];
+  _hitSnapshot?: boolean;
+  _dmgSnapshot?: boolean;
+  _mageAtkMult?: number;
+  _mageAtkExpire?: number;
+  physDamageReduction?: number;
+  aoeDamageReduction?: number;
+  _hlRoarAtk?: number;
+  _hlRoarExpire?: number;
+  _ylRoar?: number;
+  _ylRoarMult?: number;
+  _ylRoarAtkBonus?: number;
+  _ylRoarCycle?: number;
+  _tauntTarget?: string;
+  _tauntExpire?: number;
+  _stealthAttack?: boolean;
+  _wqqsAtkMult?: number;
+  _wqqsEvaMult?: number;
+  _swxzAccum?: number;
+  _swxzDrLayers?: number;
+  _hyzCycle?: number;
+  _ppRegenCycle?: number;
+  _qdRegenCycle?: number;
+  _lyzCycle?: number;
+  _crzsCycle?: number;
+  _hyzStacks?: number;
+  _dragonAtkMult?: number;
+  _bjlDefRed?: number;
+  _bjlCycle?: number;
+  _bjlDefExpire?: number;
+  _xldsStacks?: number;
+  _xldsExpire?: number;
+  _xjlLastTick?: number;
+  _xjlWindowStart?: number;
+  _xjlWindowHeal?: number;
+  _bmxzAtkBonus?: number;
+  _ymfsLeft?: boolean;
+  _ymfsLeaveAt?: number;
+  _ymfsReturnAt?: number;
+  _ymfsTargetId?: string;
+  _ymfsTargetReturnAt?: number;
+  _ymfsTargetLeaveAt?: number;
+  _hdHitChance?: number;
+  _kzsLayers?: number;
+  _kzsAtkMult?: number;
+  _kzsDr?: number;
+  _jddsAtkBonus?: number;
+  _jddsDefBonus?: number;
+  _hqsStacks?: number;
+  _hqsExpire?: number;
+  _zfyxAtkUntil?: number;
+  _bslrBreakUntil?: number;
+  _trapped?: boolean;
+  _trapCycle?: number;
+  _inspireAtkUntil?: number;
+  _inspireAtkMult?: number;
+  _xyflMult?: number;
+  _ldshzShieldCd?: number;
+  _hlRageTriggered?: boolean;
+  _hlRageAtkMult?: number;
+  _hlRageSpeedMult?: number;
+  _hlRageDrMult?: number;
+  _hlRageCycle?: number;
+  _lbmxArmorBreakUntil?: number;
+  _lbmxArmorBreakPct?: number;
+  _mdsHitCount?: number;
+  _mdsHitUntil?: number;
+  _mdsPunished?: number;
+  _bslrAtkDown?: number;
+  _bslrSlowDown?: number;
+  _bslrDebuffUntil?: number;
+  _atkBuffUntil?: number;   // v2.11 攻击增益窗口结束 (鼓舞)
+  _atkBuffPct?: number;
+  _zzxDrPhys?: number;
+  _zzxDrMag?: number;
+  _zzxDrUntil?: number;
+  _slowUntil?: number;
+  _slowPct?: number;
+  _shield?: number;
+  _shieldUntil?: number;
+  _healReduction?: number;
+  _healReductionUntil?: number;
+  _hammerTarget?: string;
+  _hitRedUntil?: number;
+  _lyzDefMult?: number;
+  _lyzAwayFromFront?: number;
+  _linkOwnerId?: string;
+  _linkUntil?: number;
+  _atkBuffAmt?: number;
+  _trappedBy?: string;
+  _analyzerOrigEva?: number;
+  _ldshzDefUntil?: number;
+  _ldshzDefApplied?: number;
+  _ldshzBuffUntil?: number;
+  _slzsGuardUntil?: number;
+  _slzsAtkMult?: number;
+  _slzsDr?: number;
+  _zqzHits?: number;
+  _zqzPower?: boolean;
+  _hammerDueAt?: number;
+  _hammerDelayedDmg?: number;
+  _yammxzCycle?: number;
+  _swapEvaUntil?: number;
+  _zfyxEvaUntil?: number;
+  _warriorAtkMult?: number;
+  _warriorDefMult?: number;
+  _warriorMagMult?: number;
+  _frenzy?: boolean;
+  _zfyxAtkStacks?: number;
+  _cutinDmgRed?: number;
+  _antiHealMult?: number;
+  _antiHealUntil?: number;
+  _fzMarks?: number;
+  _sqShieldUntil?: number;
+  _qdMissStreak?: number;
+  _qdInvulnUntil?: number;
+  _qdRegenUntil?: number;
+  _qdRegenPct?: number;
+  _qdDrUntil?: number;
+  _qdDrPct?: number;
+  _xdTauntUntil?: number;
+  _xdTauntId?: string;
+  _dmgRecent9s?: number;
+  lastHealTarget?: string;
+  _qmLayers?: number;
+  _qmUntil?: number;
+  _xdBlessUntil?: number;
+  _xdBlessDmg?: number;
+  _xdBlessDr?: number;
+  _holySuppress?: number;
+  _holyMirror?: number;
+  _holyAtkMirrorUntil?: number;
+  _holyAtkMirrorPct?: number;
+  _scDr?: number;
+  _syzHealBoostUntil?: number;
+  _warriorDr?: number;
+  _swapEvaApplied?: boolean;     // v2.11 攻击增益倍率 (鼓舞 0.35)
+  _buffWinPhys?: number;    // v2.11 增益窗口内普攻伤害累计
+  _buffWinSkill?: number;   // v2.11 增益窗口内技能伤害累计
   _immuneAbnormal?: boolean;
   _immuneTimer?: number;
   _syzDeathTrigger?: boolean;

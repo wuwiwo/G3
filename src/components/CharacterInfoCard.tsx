@@ -18,6 +18,8 @@ interface Props {
 
 const CharacterInfoCard: React.FC<Props> = ({ name, race, level, stats, talent, skillName, skillDesc, skillCD, skillCast, onClose }) => {
   const cfg = RACE_CONFIG[race] || { color: '#999', label: '?' };
+  // Compute damage reduction
+  const defRed = (def: number) => Math.min(def / (def + 200), 0.8);
 
   return (
     <div style={{
