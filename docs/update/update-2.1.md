@@ -57,6 +57,7 @@
 - `App.tsx` 版本号 `v2.0` → `v2.1`。
 - 依 `.agents/AGENT.md` 补齐 `docs/update/update-2.1.md` 版本日志（此前 `docs/` 目录尚未建立）。
 - `dist/` 已被 `.gitignore` 忽略，但 `dist/index.html`、`dist/favicon.svg`、`dist/icons.svg` 属历史误跟踪。本次从 Git 索引移除（`git rm --cached`，**不删除本地文件**），构建产物统一由 `npm run deploy`（`gh-pages -d dist`）从本地 `dist/` 推送，避免 main 分支上的 `index.html` 引用不存在的 hash 资源。
+- `deploy` 脚本引用的 `gh-pages` 此前**未在依赖清单中声明**，导致 `npm run deploy` 无法执行（历史遗留）。本次将 `gh-pages@^6.3.0` 补入 `devDependencies` 并更新 `package-lock.json`，补齐 `.agents/AGENT.md` 要求的「main 分支提交后部署」链路。
 
 ---
 
@@ -74,14 +75,15 @@
 | `src/index.css`                                         | 修改     | 新增 v2.1 水平战场、中央对阵区、HUD 样式与窄屏适配                                     |
 | `docs/update/update-2.1.md`                             | 新增     | 本版本日志                                                                             |
 | `dist/index.html`、`dist/favicon.svg`、`dist/icons.svg` | 索引移除 | 构建产物不再入库（本地文件保留）                                                       |
+| `package.json`、`package-lock.json`                     | 修改     | 补齐 `gh-pages@^6.3.0` 开发依赖，修复 `deploy` 脚本                                    |
 
 ## 七、验证结果
 
 - `npm run typecheck`：通过（`tsc --noEmit` 无输出）。
-- `npm run build`：通过，Vite 6.4.3，56 modules；产物 `dist/assets/index-Pi76lE0Z.css`（14.00 kB）、`dist/assets/index-CXVT6H20.js`（438.79 kB）。
+- `npm run build`：通过，Vite 6.4.3，56 modules；最终产物 `dist/assets/index-D4JHmkuT.css`（14.05 kB）、`dist/assets/index-buC7r5Ex.js`（438.80 kB）。
 - 浏览器实跑（自动随机双方阵容并开战）：`.panel-controls` 随机按钮 2 个、开始按钮存在、单位格 16 个、像素头像 `<img>` 16 个、中央对阵区 `VS | 4.8s | ⚔ | 8 : 8 | 水平对峙`。
 - HUD 数据一致性：顶部优势条 `4,380 / 5,056` 与双方队伍块「总输出」完全一致，占比 46% / 54%，DPS 1,254 / 1,223，伤害构成与 TOP3 均有数值。
-- 目视验收截图：战斗结束态（我方 0/8、敌方 6/8），HUD、水平对峙、中央 VS 区、像素头像均正常渲染。
+- 目视验收截图：战斗进行中（11.7s、双方 8/8）可见 16 个彩色像素头像、左右对峙棋盘与中央 `VS · 8:8`；战斗结束态（我方 0/8、敌方 6/8）HUD、胜负横幅与实时统计均正常渲染。
 
 ## 八、已知问题
 
