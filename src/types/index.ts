@@ -170,6 +170,8 @@ export interface ArenaUnit {
   // Summon system
   summonerId?: string;
   isSummon?: boolean;
+  summonIndex?: number; // v3.4 R10: 召唤物日志编号
+  _guarded?: boolean; // v3.4 R11: 被召唤物护卫中
   // Personal stats (optional, default 0)
   lifeSteal?: number;
   critRate?: number;

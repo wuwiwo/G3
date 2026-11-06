@@ -37,11 +37,12 @@ const BattleField: React.FC<Props> = ({
   focusUnit,
   layout = "horizontal",
 }) => {
+  // v3.4 R11: 一格可容纳多个单位（骷髅大帝 + 3 个骷髅兵同格）
   const grid = useMemo(() => {
-    const g: (ArenaUnit | null)[][] = [
-      [null, null, null],
-      [null, null, null],
-      [null, null, null],
+    const g: ArenaUnit[][][] = [
+      [[], [], []],
+      [[], [], []],
+      [[], [], []],
     ];
     for (const u of battle.units) {
       if (
@@ -51,9 +52,13 @@ const BattleField: React.FC<Props> = ({
         u.col >= 0 &&
         u.col <= 2
       ) {
-        g[u.row][u.col] = u;
+        g[u.row][u.col].push(u);
       }
     }
+    // 非召唤物（本体）排前，避免被召唤物覆盖
+    for (const row of g)
+      for (const cell of row)
+        cell.sort((a, b) => Number(!!a.isSummon) - Number(!!b.isSummon));
     return g;
   }, [battle.units, side]);
 
@@ -76,7 +81,8 @@ const BattleField: React.FC<Props> = ({
       .reduce((a: number, s: any) => a + (s.totalDamageDealt || 0), 0) || 0;
 
   const renderCell = (row: Row, col: number) => {
-    const unit = grid[row][col];
+    const units = grid[row][col];
+    const unit = units[0];
     if (!unit) {
       return (
         <div key={`e-${row}-${col}`} className="arena-empty">
@@ -84,6 +90,7 @@ const BattleField: React.FC<Props> = ({
         </div>
       );
     }
+    const extras = units.slice(1).filter((u) => u.isSummon);
     return (
       <div
         data-cell-id={unit.id}
@@ -96,6 +103,64 @@ const BattleField: React.FC<Props> = ({
           onClick={() => onUnitClick?.(unit)}
           focused={focusUnit?.id === unit.id}
         />
+        {extras.length > 0 && (
+          <div
+            style={{
+              position: "absolute",
+              right: 2,
+              bottom: 2,
+              display: "flex",
+              flexDirection: "column",
+              gap: 1,
+              zIndex: 3,
+              pointerEvents: "none",
+            }}
+          >
+            {extras.map((s) => {
+              const pct = Math.max(
+                0,
+                Math.min(100, (s.currentHp / Math.max(1, s.maxHp)) * 100)
+              );
+              return (
+                <div
+                  key={s.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                    fontSize: 9,
+                    color: s.isDead ? "#777" : "#cfe8ff",
+                    background: "rgba(10,14,22,.78)",
+                    borderRadius: 3,
+                    padding: "1px 3px",
+                  }}
+                >
+                  <span>
+                    {s.def.name}#{s.summonIndex ?? "?"}
+                  </span>
+                  <span
+                    style={{
+                      width: 22,
+                      height: 3,
+                      background: "#333",
+                      borderRadius: 2,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "block",
+                        height: "100%",
+                        width: `${pct}%`,
+                        background: s.isDead ? "#555" : "#5ecf8a",
+                      }}
+                    />
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   };

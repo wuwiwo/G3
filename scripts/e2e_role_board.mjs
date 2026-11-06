@@ -311,6 +311,91 @@ const shot = await cdp.send(
 writeFileSync(SHOT, Buffer.from(shot.data, "base64"));
 console.log(`\n  截图: ${SHOT}`);
 
+// v3.4 R11: 战场 UI 冒烟 —— 关闭看板 → 双方定点部署亡灵 → 开战，
+// 验证「一格多单位」渲染不崩 + 骷髅兵# 编号徽章（随机阵容抽不到亡灵，改用定点部署）
+await evalJs(`(() => {
+  const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === '关闭');
+  if (b) b.click();
+  return true;
+})()`);
+await wait(400);
+// deploy(race) 只填空位，先清空双方，避免历史/随机阵容占满 9 格导致部署无效
+await evalJs(`(() => {
+  [...document.querySelectorAll('button')]
+    .filter(x => x.textContent.trim() === '清空')
+    .forEach(b => b.click());
+  return true;
+})()`);
+await wait(300);
+const deployed = await evalJs(`(() => {
+  const bs = [...document.querySelectorAll('button.deploy-btn')];
+  // RACE_ORDER = beast/hunter/warrior/mage/undead/dragon/holy，每方 7 个
+  // index 4 = 我方亡灵，7 + 4 = 11 = 敌方亡灵
+  if (bs.length < 12) return { ok: false, count: bs.length };
+  bs[4].click();
+  bs[11].click();
+  return { ok: true, count: bs.length };
+})()`);
+check("双方亡灵一键部署可用", deployed.ok === true, JSON.stringify(deployed));
+await wait(600);
+const started = await evalJs(`(() => {
+  const s = document.querySelector('button.start-btn');
+  if (s && !s.disabled) { s.click(); return true; }
+  return false;
+})()`);
+// 骷髅大帝开场即召唤 3 个骷髅兵；轮询等 UI 渲染出编号徽章（最多 8s）
+let field = { cells: 0, badges: 0 };
+for (let i = 0; i < 16; i++) {
+  await wait(500);
+  field = JSON.parse(
+    await evalJs(`JSON.stringify({
+    cells: document.querySelectorAll('.arena-cell').length,
+    badges: (document.body.innerText.match(/骷髅兵#/g) || []).length
+  })`)
+  );
+  if (field.cells > 0 && field.badges > 0) break;
+}
+console.log(
+  `  战场冒烟: 开战=${started} 格子=${field.cells} 召唤物徽章=${field.badges}`
+);
+check(
+  "战场 UI 可渲染（R11 一格多单位）",
+  started && field.cells > 0,
+  JSON.stringify(field)
+);
+check(
+  "R11 亡灵召唤物编号徽章可见（骷髅兵#）",
+  field.badges >= 3,
+  JSON.stringify(field)
+);
+// 补拍战场实拍证据（滚动到战场 → clip 战场区域 2× 放大，让骷髅兵#徽章清晰可读）
+await evalJs(`(() => {
+  const el = document.querySelector('.arena-cell');
+  if (el) el.scrollIntoView({ block: 'center' });
+  return true;
+})()`);
+await wait(300);
+const clipRect = JSON.parse(
+  await evalJs(`(() => {
+  const rs = [...document.querySelectorAll('.arena-cell')].map(c => c.getBoundingClientRect());
+  if (!rs.length) return JSON.stringify(null);
+  const x = Math.min(...rs.map(r => r.left)), y = Math.min(...rs.map(r => r.top));
+  const x2 = Math.max(...rs.map(r => r.right)), y2 = Math.max(...rs.map(r => r.bottom));
+  const x0 = Math.max(0, x - 16), y0 = Math.max(0, y - 56);
+  return JSON.stringify({
+    x: x0, y: y0,
+    width: Math.min(1440 - x0, x2 - x0 + 16),
+    height: Math.min(1600 - y0, y2 - y0 + 16)
+  });
+})()`)
+);
+const FIELD_SHOT = path.join(os.tmpdir(), "g3_battlefield_undead.png");
+const shotOpts = { format: "png", captureBeyondViewport: false };
+if (clipRect) Object.assign(shotOpts, { clip: { ...clipRect, scale: 2 } });
+const fieldShot = await cdp.send("Page.captureScreenshot", shotOpts, S);
+writeFileSync(FIELD_SHOT, Buffer.from(fieldShot.data, "base64"));
+console.log(`  战场截图: ${FIELD_SHOT}`);
+
 const uniq = [...new Set(pageErrors)];
 check(
   "无非预期页面异常 / console.error",

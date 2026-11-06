@@ -1,6 +1,6 @@
 import { ArenaUnit, StatusType, DamageType, Row } from "../types";
 import { calcDamage } from "./damage";
-import { trackSkill } from "./battle";
+import { trackSkill, getAttackableEnemies } from "./battle";
 
 export type SkillHandler = (
   caster: ArenaUnit,
@@ -82,9 +82,7 @@ registerSkillHandler("lyz_heal", (caster, state, log) => {
 
 // 食人魔魔法师 — 火焰爆轰(消耗HP+多重施法)
 registerSkillHandler("srm_fire", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   // 消耗5%当前生命值
   const cost = Math.floor(caster.currentHp * 0.05);
@@ -190,9 +188,7 @@ registerSkillHandler("mrsz_doom", (caster, state, log) => {
   const cost = Math.floor(caster.maxHp * 0.06);
   caster.currentHp -= cost;
   // 目标: 近10s伤害最高 (用 totalDamageDealt 近似)
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   const topDmg = enemies.sort(
     (a: any, b: any) => (b.totalDamageDealt || 0) - (a.totalDamageDealt || 0)
   )[0];
@@ -237,9 +233,7 @@ registerSkillHandler("mrsz_doom", (caster, state, log) => {
 // 死亡先知 — 吸魂巫术
 registerSkillHandler("swxz_drain", (caster, state, log) => {
   // v2.12 按文档: 前排70/中15/后15 + 每秒9%+2%×6s + 吸血25% + 结束后诅咒4s
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const roll = Math.random() * 100;
   let pool: any[];
@@ -313,9 +307,7 @@ registerSkillHandler("syz_bless", (caster, state, log) => {
 
 // 洞狮 — 撕咬 (v2.12 按文档: 每秒65%+10纯伤 DoT 3s + 无法行动 + 自身吸血20%)
 registerSkillHandler("ds_bite", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   // 优先后排
   const back = enemies.filter((e: any) => e.row === Row.Back);
@@ -363,9 +355,7 @@ registerSkillHandler("yammxz_swap", (caster, state, log) => {
   caster._swapEvaUntil = state.time + 4;
   buddy._swapEvaUntil = state.time + 4;
   // v3.3: 随机 2 名敌人（原为对称 2 名）→ 沉默4s + 120%纯伤
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   const hit = (shuffle(enemies) as any[]).slice(0, 2);
   for (const t of hit) {
     t.statuses.push({
@@ -472,9 +462,7 @@ registerSkillHandler("hyz_shield", (caster, state, log) => {
 
 // 火焰翼龙 — 火焰喷吐 (v2.12 按文档: 前排最低血 + 每秒50%魔法×6s DoT)
 registerSkillHandler("hlyl_fire", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   // 前排最低血 (无前排按中→后顺序)
   let pool = enemies.filter((e: any) => e.row === Row.Front);
@@ -511,9 +499,7 @@ registerSkillHandler("hlyl_fire", (caster, state, log) => {
 
 // 血翼飞龙 — 乱序打击 (v2.12 按文档: 随机2排 + 60%打乱位置 + 命中5-6人-30%)
 registerSkillHandler("xyfl_chaos", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   // 随机2排
   // v3.3: 随机 4 名敌人（不再是随机 2 排）
@@ -561,9 +547,7 @@ registerSkillHandler("xyfl_chaos", (caster, state, log) => {
 
 // 水晶室女 — 冰封 (v2.12 按文档: 束缚+缴械3s + 每秒90%魔法DoT×3s)
 registerSkillHandler("sjsn_freeze", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const target = enemies[Math.floor(Math.random() * enemies.length)];
   target.statuses.push({
@@ -599,9 +583,7 @@ registerSkillHandler("sjsn_freeze", (caster, state, log) => {
 
 // 美杜莎 — 石化凝视 (v2.12 按文档: 前中后各1名 + 140% + 束缚4s)
 registerSkillHandler("mds_skill", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const targets: any[] = [];
   for (const r of [0, 1, 2]) {
@@ -661,9 +643,7 @@ registerSkillHandler("slzs_guard", (caster, state, log) => {
 
 // 风之斗士 — 疾风连击 (v3.4 用户直发: 5次×65%, 无视防御, 目标随机)
 registerSkillHandler("fdzs_combo", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   let total = 0;
   for (let i = 0; i < 5; i++) {
@@ -709,9 +689,7 @@ registerSkillHandler("fdzs_combo", (caster, state, log) => {
 // 彭彭猪 — 催眠 (v2.12 按文档: 后排随机一名 + 自身同时睡眠, 后排无人只睡自己)
 registerSkillHandler("pp_sleep", (caster, state, log) => {
   // v3.3 催眠: 随机发动 1 个效果
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (Math.random() < 0.5) {
     // ① 自身与随机一名敌人同时睡眠 4s（优先后排）
     caster.statuses.push({
@@ -781,9 +759,7 @@ registerSkillHandler("yl_stealth", (caster, state, log) => {
 
 // 陷阱猎人 — 超级陷阱
 registerSkillHandler("xjlr_trap", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const target = enemies[Math.floor(Math.random() * enemies.length)];
   // v2.12 无法移动/切入 = Bind 20s (描述: 持续20s) + 每2s DoT
@@ -837,9 +813,7 @@ registerSkillHandler("ldshz_buff", (caster, state, log) => {
 
 // 决斗大师 — 战力夺舍
 registerSkillHandler("jdds_steal", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   enemies.sort((a: any, b: any) => b.currentAttack - a.currentAttack);
   const target = enemies[0];
@@ -858,9 +832,7 @@ registerSkillHandler("jdds_steal", (caster, state, log) => {
 
 // 暗影噬龙 — 暗影突袭
 registerSkillHandler("aysl_strike", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   // v2.12 目标: 后排生命最低 (无后排则全场最低)
   const back = enemies.filter((e: any) => e.row === Row.Back);
@@ -893,9 +865,7 @@ registerSkillHandler("aysl_strike", (caster, state, log) => {
 
 // 秀逗大师 — 火球/陨石升级
 registerSkillHandler("xdds_fire", (caster, state, log, targets) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   caster._meteorCount = (caster._meteorCount || 0) + 1;
   const isMeteor = caster._meteorCount >= 3;
@@ -993,9 +963,7 @@ registerSkillHandler("xdds_fire", (caster, state, log, targets) => {
 
 // 暴君龙 — 翅击：第1个180%+降攻速，第2个230%
 registerSkillHandler("bjl_wing", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   // v3.3: 中排、后排各 1 名
   const mid = shuffle(enemies.filter((e: any) => e.row === Row.Mid)) as any[];
   const back = shuffle(enemies.filter((e: any) => e.row === Row.Back)) as any[];
@@ -1050,9 +1018,7 @@ registerSkillHandler("bjl_wing", (caster, state, log) => {
 
 // 地龙 — 龙踏：全屏+行系数
 registerSkillHandler("dl_stomp", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   const rowMultipliers: Record<number, number> = { 0: 1.3, 1: 1.0, 2: 0.7 }; // v3.3 130/100/70%
   const baseRatio = caster.def.skill.damage?.[0]?.atkRatio ?? 1.5; // v2.36; // v2.32c
   for (const t of enemies) {
@@ -1107,9 +1073,7 @@ registerSkillHandler("xblr_shot", (caster, state, log) => {
     caster.row = dest.row;
     caster.col = dest.col;
   }
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const nTargets = Math.floor(Math.random() * 3) + 1;
   const targets = shuffle(enemies).slice(0, nTargets) as any[];
@@ -1145,9 +1109,7 @@ registerSkillHandler("xblr_shot", (caster, state, log) => {
 
 // 冰霜猎人 — 持续射击+降攻速
 registerSkillHandler("bslr_shot", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   // v2.12 随机1排目标
   const row = [0, 1, 2][Math.floor(Math.random() * 3)];
@@ -1252,9 +1214,7 @@ registerSkillHandler("zzx_buff", (caster, state, log) => {
 // 冰霜邪龙 — 每3次升级冰冻
 registerSkillHandler("bsxl_freeze", (caster, state, log) => {
   // v3.3: 随机 1 排敌人
-  const aliveEnemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const aliveEnemies = getAttackableEnemies(state, caster.team);
   const rows = [...new Set(aliveEnemies.map((u: any) => u.row))];
   if (rows.length === 0) return;
   const row = rows[Math.floor(Math.random() * rows.length)];
@@ -1341,9 +1301,7 @@ registerSkillHandler("fxz_analyze", (caster, state, log) => {
 
 // 白马行者 — 蓄力：随机1/2/3s，不同蓄力时间对应不同目标排
 registerSkillHandler("bmxz_charge", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const chargeTime = caster._chargeTime || 2;
   caster._chargeTime = undefined;
@@ -1404,9 +1362,7 @@ export function initSkillHandlers() {
 
 // 符咒大师 — 符咒: 150% + 印记×10%
 registerSkillHandler("fz_curse", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const target = enemies[Math.floor(Math.random() * enemies.length)];
   const stacks = target._fzMarks || 0;
@@ -1442,9 +1398,7 @@ registerSkillHandler("fz_curse", (caster, state, log) => {
 
 // 驱魔者 — 2×2范围 180%魔法 (有增益→纯粹)
 registerSkillHandler("qm_exorcise", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const pick = shuffle(enemies).slice(0, 4) as any[];
   let total = 0;
@@ -1606,9 +1560,7 @@ registerSkillHandler("qd_pray", (caster, state, log) => {
 
 // 圣拳者 — 后排3×70%
 registerSkillHandler("sqz_combo", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const back = enemies.filter((e: any) => e.row === Row.Back);
   const pool = back.length > 0 ? back : enemies;
@@ -1643,9 +1595,7 @@ registerSkillHandler("sqz_combo", (caster, state, log) => {
 
 // 朱雀之神 — 1排220%魔法+灼烧4s
 registerSkillHandler("zq_flame", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const row = [0, 1, 2][Math.floor(Math.random() * 3)];
   const targets = enemies.filter((e: any) => e.row === row);
@@ -1684,9 +1634,7 @@ registerSkillHandler("zq_flame", (caster, state, log) => {
 
 // 圣裁者 — 审判之光
 registerSkillHandler("sc_judge", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const top = enemies.sort(
     (a: any, b: any) => (b._dmgRecent9s || 0) - (a._dmgRecent9s || 0)
@@ -1737,9 +1685,7 @@ registerSkillHandler("sc_judge", (caster, state, log) => {
 // 殉道者 — 牺牲嘲讽
 registerSkillHandler("xd_sacrifice", (caster, state, log) => {
   // v3.4: 使敌方随机 1 名造成伤害-20%，每秒受到目标自身防御总和×20%纯粹，持续4s
-  const enemies = state.units.filter(
-    (u: any) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const t = enemies[Math.floor(Math.random() * enemies.length)];
   t._xdDmgDownUntil = state.time + 4;

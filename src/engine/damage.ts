@@ -630,6 +630,24 @@ export function calcDamage(
     };
   }
 
+  // v3.4 R11 兜底: 被召唤物护卫的骷髅大帝不受任何伤害
+  if ((defender as any)._guarded) {
+    result.hit = false;
+    result.finalDamage = 0;
+  }
+  // v3.4 R12: 复活后 15s debuff（输出-25% / 受伤+25%，可叠加）
+  const nowDebuff = nowOf(extraOpts);
+  if (
+    (attacker as any)._reviveDebuffUntil &&
+    (attacker as any)._reviveDebuffUntil > nowDebuff
+  )
+    result.finalDamage = Math.floor(result.finalDamage * 0.75);
+  if (
+    (defender as any)._reviveDebuffUntil &&
+    (defender as any)._reviveDebuffUntil > nowDebuff
+  )
+    result.finalDamage = Math.floor(result.finalDamage * 1.25);
+
   return result;
 }
 

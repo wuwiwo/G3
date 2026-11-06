@@ -44,7 +44,11 @@ function pfx(u: ArenaUnit): string {
       dragon: "龙",
       holy: "圣",
     }[r] || r;
-  return `${u.team === "ally" ? "🟦" : "🟥"}[${tag}]${u.def.name}`;
+  // v3.4 R10: 召唤物带编号，避免「阵亡后还在打」的误读
+  const label = (u as any).summonIndex
+    ? `${u.def.name}#${(u as any).summonIndex}`
+    : u.def.name;
+  return `${u.team === "ally" ? "🟦" : "🟥"}[${tag}]${label}`;
 }
 
 /** Fisher-Yates shuffle */
@@ -140,11 +144,28 @@ function moveToRandomEmpty(unit: any, state: any) {
   return false;
 }
 
+/** v3.4 R11: 骷髅大帝护卫 —— 召唤物全灭前本体不可被选为目标 */
+export function getAttackableEnemies(
+  state: any,
+  selfTeam: "ally" | "enemy"
+): any[] {
+  // 返回 any[] 以保留原「state.units.filter((u:any)=>...)」的宽松度，
+  // 避免把既有 handler 里被 any 掩盖的字段收紧成强类型后报错。
+  return state.units.filter((u: any) => {
+    if (u.team === selfTeam || u.isDead) return false;
+    if (u.def.id !== "kldd") return true;
+    return !state.units.some(
+      (x: any) =>
+        x.team === u.team && x.isSummon && x.summonerId === u.id && !x.isDead
+    );
+  });
+}
+
 function getEnemies(
   state: BattleState,
   selfTeam: "ally" | "enemy"
 ): ArenaUnit[] {
-  return state.units.filter((u) => u.team !== selfTeam && !u.isDead);
+  return getAttackableEnemies(state, selfTeam);
 }
 
 /** v3.3 星辰龙: 随机 2×2 格子上的敌人 */
@@ -565,6 +586,7 @@ export function initBattle(
       const sk = createUnit(skelDef, 100, kldd.team, kldd.row, kldd.col);
       sk.isSummon = true;
       sk.summonerId = kldd.id;
+      sk.summonIndex = i + 1; // v3.4 R10: 日志区分 3 个召唤物
       state.units.push(sk);
     }
     trackTalent(state, kldd.id, "召唤骷髅兵×3", 3, "count");
@@ -704,9 +726,7 @@ export function initBattle(
     for (const xjlr of us.filter(
       (u: any) => u.def.id === "xjlr" && !isRuined(u)
     )) {
-      const oppUnits = state.units.filter(
-        (x: any) => x.team !== xjlr.team && !x.isDead
-      );
+      const oppUnits = getAttackableEnemies(state, xjlr.team);
       const targets = shuffle(oppUnits).slice(0, 2);
       for (const tr of targets as ArenaUnit[]) {
         tr._trapped = true;
@@ -796,7 +816,14 @@ export function initBattle(
 const MAX_LOG = 2000;
 
 function deferDamage(target: any, dmg: number, state: any) {
-  if (dmg <= 0) return;
+  // v3.4 R8: 已阵亡单位不再承伤/累计挨打统计
+  if (target.isDead || dmg <= 0) return;
+  // v3.4 R12: 复活 debuff 的受伤侧同样作用于延迟/DoT 伤害
+  if (
+    (target as any)._reviveDebuffUntil &&
+    (target as any)._reviveDebuffUntil > state.time
+  )
+    dmg = Math.floor(dmg * 1.25);
   addStat(state, target.id, "hitsTaken", 1); // v2.13 Step3 被攻击次数
   // v2.12 护盾吸收 (魂之引渡者)
   if (target._shield > 0) {
@@ -854,6 +881,8 @@ function deferDamage(target: any, dmg: number, state: any) {
 
 function processDelayedDamage(state: any) {
   for (const u of state.units) {
+    // v3.4 R8: 延迟队列不对已阵亡单位结算
+    if (u.isDead) continue;
     if (!u._delayedDamage || u._delayedDamage.length === 0) continue;
     const now = state.time;
     const ready = u._delayedDamage.filter((d: any) => d.expireTime <= now);
@@ -875,6 +904,16 @@ export function processTick(state: any): any {
   if (state.phase !== "fighting") return state;
   state.time += 0.1;
   setBattleClock(state.time);
+  // v3.4 R9: survivalTime 改为累计在场秒数（复活/阵亡期间不计）
+  for (const u of getAlive(state)) addStat(state, u.id, "survivalTime", 0.1);
+  // v3.4 R11: 兜底标记，防止自带选敌逻辑的 handler 绕过护卫
+  for (const u of state.units) {
+    if (u.def.id === "kldd")
+      (u as any)._guarded = state.units.some(
+        (x: any) =>
+          x.team === u.team && x.isSummon && x.summonerId === u.id && !x.isDead
+      );
+  }
   // 同时结算：tick 开头快照各单位状态/受击标记，本 tick 内新施加的控制/伤害不打断同 tick 施法
   for (const u of state.units) {
     u._statusSnapshot = u.statuses.slice();
@@ -2758,8 +2797,9 @@ function updateDeaths(state: any) {
     if (u.currentHp > 0 || u.isDead) continue;
     u.isDead = true;
     // v3.3 殉道者: 每当友方角色阵亡（不再只在自身阵亡时）
+    // v3.4 R7: 天赋只在殉道者存活时触发（技能阵亡后继续发动另见 updateMartyrPostmortem）
     const martyr = state.units.find(
-      (x: any) => x.team === u.team && x.def.id === "xd"
+      (x: any) => x.team === u.team && x.def.id === "xd" && !x.isDead
     );
     if (martyr) {
       for (const e of state.units.filter(
@@ -2791,7 +2831,7 @@ function updateDeaths(state: any) {
       });
     }
     addStat(state, u.id, "deaths", 1);
-    addStat(state, u.id, "survivalTime", state.time);
+    // v3.4 R9: 存活时长按 tick 累计，不再记绝对时刻
     // v2.17 分析者阵亡: 标记失效, 恢复闪避 (方案C 标记类)
     if (u.def.id === "fxz") {
       for (const x of state.units) {
@@ -2981,6 +3021,8 @@ function updateRevivals(state: any) {
         u.reviving = undefined;
         u.invincibleTimer = 0; // v3.3 文档未给无敌，移除旧无敌
         u.hasRevived = true;
+        // v3.4 R12: 复活后 15s 内造成伤害-25%、受到敌人伤害+25%
+        (u as any)._reviveDebuffUntil = state.time + 15;
         // v3.3 魂之引渡者: 复活后立即获得 5 层魂能
         if (u.def.id === "hyz") (u as any)._hyzStacks = 5;
         // v3.3: 延迟后每秒失去最大HP×X%（字段实现，无法驱散）
@@ -2991,7 +3033,7 @@ function updateRevivals(state: any) {
         };
         state.battleLog.push({
           time: state.time,
-          text: `🔄 ${u.def.name} 复活至${Math.round(reviveHpPct * 100)}%HP，技能进入冷却；${revDecayDelay}s后每秒失去${Math.round(revDecayPct * 100)}%最大HP`,
+          text: `🔄 ${u.def.name} 复活至${Math.round(reviveHpPct * 100)}%HP，技能进入冷却；${revDecayDelay}s后每秒失去${Math.round(revDecayPct * 100)}%最大HP；复活后15s内造成伤害-25%/受到伤害+25%`,
           type: "status",
         });
       }
@@ -3115,9 +3157,7 @@ function updateMartyrPostmortem(state: any) {
     xd._xdPostmortemCd -= 0.1;
     if (xd._xdPostmortemCd > 0) continue;
     xd._xdPostmortemCd = (xd.def.skill.cooldown || 8) * 2;
-    const enemies = state.units.filter(
-      (u: any) => u.team !== xd.team && !u.isDead
-    );
+    const enemies = getAttackableEnemies(state, xd.team);
     if (enemies.length === 0) continue;
     const t = enemies[Math.floor(Math.random() * enemies.length)];
     // v3.4: 阵亡后版本不施加降伤，DoT 只造成 50% 伤害
@@ -3142,9 +3182,7 @@ function updateVictory(state: any) {
   if (state.time >= 180 && state.phase === "fighting") {
     state.phase = "finished";
     state.winner = "draw";
-    for (const u of state.units) {
-      if (!u.isDead) addStat(state, u.id, "survivalTime", state.time);
-    }
+    // v3.4 R9: 存活时长按 tick 累计，超时结束不再补记
     state.battleLog.push({
       time: state.time,
       text: `⏰ 战斗超时(180s): 平局！`,
@@ -3157,10 +3195,7 @@ function updateVictory(state: any) {
   if (a.length === 0 || e.length === 0) {
     state.phase = "finished";
     state.winner = a.length > 0 ? "ally" : "enemy";
-    // Record survival time for all alive units
-    for (const u of state.units) {
-      if (!u.isDead) addStat(state, u.id, "survivalTime", state.time);
-    }
+    // v3.4 R9: 存活时长按 tick 累计，胜负结束不再补记
     state.battleLog.push({
       time: state.time,
       text: `🏁 ${state.winner === "ally" ? "我方" : "敌方"}胜利！`,
@@ -4018,9 +4053,7 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         const mirrorPct = lv === 3 ? 0.15 : lv === 2 ? 0.1 : 0.04;
         const rawHeal = finalAmount;
         finalAmount = Math.floor(finalAmount * (1 - sp));
-        const recipients = state.units.filter(
-          (x: any) => x.team !== caster.team && !x.isDead
-        );
+        const recipients = getAttackableEnemies(state, caster.team);
         const share = Math.floor(
           (rawHeal * mirrorPct) / Math.max(1, recipients.length)
         );
@@ -4283,13 +4316,8 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
 
 function addStat(state: any, unitId: string, field: string, value: number) {
   const s = state.stats?.find((st: any) => st.unitId === unitId);
-  if (s && typeof s[field] === "number") {
-    // v3.3-r5: survivalTime 记的是「时刻」而非「数量」。复活单位原本会被
-    // updateDeaths 与 updateVictory 各记一次并累加，导致存活s > 战斗时长，
-    // 进而让 10s 归一失真。改为覆盖取最后一次记录时刻。
-    if (field === "survivalTime") s[field] = value;
-    else s[field] += value;
-  }
+  // v3.4 R9: survivalTime 已是「累计在场秒数」，与其它统计一样普通累加
+  if (s && typeof s[field] === "number") s[field] += value;
   // v3.3 圣裁者「最近 9s 累计伤害」滚动窗口（此前 _dmgRecent9s 从未赋值）
   if (field === "totalDamageDealt" && value > 0) {
     const u = state.units?.find((x: any) => x.id === unitId);

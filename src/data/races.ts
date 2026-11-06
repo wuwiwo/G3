@@ -73,11 +73,13 @@ const BASE_BONDS: Record<Race, TierData> = {
     2: { evasionBonus: 5 },
     3: {
       evasionBonus: 10,
-      special: "首次阵亡10s后复活至15%HP，2s后每秒失去3%最大HP(无法驱散)",
+      special:
+        "首次阵亡10s后复活至15%HP，2s后每秒失去3%最大HP(无法驱散)+复活后15s造成伤害-25%/受伤+25%",
     },
     4: {
       evasionBonus: 20,
-      special: "首次阵亡5s后复活至25%HP，3s后每秒失去2%最大HP(无法驱散)",
+      special:
+        "首次阵亡5s后复活至25%HP，3s后每秒失去2%最大HP(无法驱散)+复活后15s造成伤害-25%/受伤+25%",
     },
   },
   [Race.Dragon]: {

@@ -453,6 +453,15 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
       type: "pure",
     };
   }
+  if (defender._guarded) {
+    result.hit = false;
+    result.finalDamage = 0;
+  }
+  const nowDebuff = nowOf(extraOpts);
+  if (attacker._reviveDebuffUntil && attacker._reviveDebuffUntil > nowDebuff)
+    result.finalDamage = Math.floor(result.finalDamage * 0.75);
+  if (defender._reviveDebuffUntil && defender._reviveDebuffUntil > nowDebuff)
+    result.finalDamage = Math.floor(result.finalDamage * 1.25);
   return result;
 }
 function applyFatalStrike(attacker, damage, isSkill) {
@@ -560,12 +569,12 @@ var BASE_BONDS = {
     3: {
       evasionBonus: 10,
       special:
-        "\u9996\u6B21\u9635\u4EA110s\u540E\u590D\u6D3B\u81F315%HP\uFF0C2s\u540E\u6BCF\u79D2\u5931\u53BB3%\u6700\u5927HP(\u65E0\u6CD5\u9A71\u6563)",
+        "\u9996\u6B21\u9635\u4EA110s\u540E\u590D\u6D3B\u81F315%HP\uFF0C2s\u540E\u6BCF\u79D2\u5931\u53BB3%\u6700\u5927HP(\u65E0\u6CD5\u9A71\u6563)+\u590D\u6D3B\u540E15s\u9020\u6210\u4F24\u5BB3-25%/\u53D7\u4F24+25%",
     },
     4: {
       evasionBonus: 20,
       special:
-        "\u9996\u6B21\u9635\u4EA15s\u540E\u590D\u6D3B\u81F325%HP\uFF0C3s\u540E\u6BCF\u79D2\u5931\u53BB2%\u6700\u5927HP(\u65E0\u6CD5\u9A71\u6563)",
+        "\u9996\u6B21\u9635\u4EA15s\u540E\u590D\u6D3B\u81F325%HP\uFF0C3s\u540E\u6BCF\u79D2\u5931\u53BB2%\u6700\u5927HP(\u65E0\u6CD5\u9A71\u6563)+\u590D\u6D3B\u540E15s\u9020\u6210\u4F24\u5BB3-25%/\u53D7\u4F24+25%",
     },
   },
   ["dragon" /* Dragon */]: {
@@ -749,9 +758,7 @@ registerSkillHandler("lyz_heal", (caster, state, log) => {
   }
 });
 registerSkillHandler("srm_fire", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const cost = Math.floor(caster.currentHp * 0.05);
   caster.currentHp -= cost;
@@ -845,9 +852,7 @@ registerSkillHandler("mrsz_doom", (caster, state, log) => {
   if (caster.currentHp / caster.maxHp < 0.2) return;
   const cost = Math.floor(caster.maxHp * 0.06);
   caster.currentHp -= cost;
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   const topDmg = enemies.sort(
     (a, b) => (b.totalDamageDealt || 0) - (a.totalDamageDealt || 0)
   )[0];
@@ -889,9 +894,7 @@ registerSkillHandler("mrsz_doom", (caster, state, log) => {
   }
 });
 registerSkillHandler("swxz_drain", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const roll = Math.random() * 100;
   let pool;
@@ -958,9 +961,7 @@ registerSkillHandler("syz_bless", (caster, state, log) => {
   caster._syzDeathTrigger = true;
 });
 registerSkillHandler("ds_bite", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const back = enemies.filter((e) => e.row === 2 /* Back */);
   const mid = enemies.filter((e) => e.row === 1 /* Mid */);
@@ -1000,9 +1001,7 @@ registerSkillHandler("yammxz_swap", (caster, state, log) => {
   buddy.evasion = (buddy.evasion || 0) + 0.2;
   caster._swapEvaUntil = state.time + 4;
   buddy._swapEvaUntil = state.time + 4;
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   const hit = shuffle(enemies).slice(0, 2);
   for (const t of hit) {
     t.statuses.push({
@@ -1107,9 +1106,7 @@ registerSkillHandler("hyz_shield", (caster, state, log) => {
   });
 });
 registerSkillHandler("hlyl_fire", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   let pool = enemies.filter((e) => e.row === 0 /* Front */);
   if (pool.length === 0) pool = enemies.filter((e) => e.row === 1 /* Mid */);
@@ -1143,9 +1140,7 @@ registerSkillHandler("hlyl_fire", (caster, state, log) => {
   });
 });
 registerSkillHandler("xyfl_chaos", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const targets = shuffle(enemies).slice(0, 4);
   const hitCount = targets.length;
@@ -1193,9 +1188,7 @@ registerSkillHandler("xyfl_chaos", (caster, state, log) => {
   });
 });
 registerSkillHandler("sjsn_freeze", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const target = enemies[Math.floor(Math.random() * enemies.length)];
   target.statuses.push({
@@ -1230,9 +1223,7 @@ registerSkillHandler("sjsn_freeze", (caster, state, log) => {
   });
 });
 registerSkillHandler("mds_skill", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const targets = [];
   for (const r of [0, 1, 2]) {
@@ -1294,9 +1285,7 @@ registerSkillHandler("slzs_guard", (caster, state, log) => {
   });
 });
 registerSkillHandler("fdzs_combo", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   let total = 0;
   for (let i = 0; i < 5; i++) {
@@ -1340,9 +1329,7 @@ registerSkillHandler("fdzs_combo", (caster, state, log) => {
   });
 });
 registerSkillHandler("pp_sleep", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (Math.random() < 0.5) {
     caster.statuses.push({
       type: "sleep" /* Sleep */,
@@ -1411,9 +1398,7 @@ registerSkillHandler("yl_stealth", (caster, state, log) => {
   });
 });
 registerSkillHandler("xjlr_trap", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const target = enemies[Math.floor(Math.random() * enemies.length)];
   target.statuses.push({
@@ -1459,9 +1444,7 @@ registerSkillHandler("ldshz_buff", (caster, state, log) => {
   });
 });
 registerSkillHandler("jdds_steal", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   enemies.sort((a, b) => b.currentAttack - a.currentAttack);
   const target = enemies[0];
@@ -1477,9 +1460,7 @@ registerSkillHandler("jdds_steal", (caster, state, log) => {
   });
 });
 registerSkillHandler("aysl_strike", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const back = enemies.filter((e) => e.row === 2 /* Back */);
   const pool = back.length > 0 ? back : enemies;
@@ -1509,9 +1490,7 @@ registerSkillHandler("aysl_strike", (caster, state, log) => {
   });
 });
 registerSkillHandler("xdds_fire", (caster, state, log, targets) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   caster._meteorCount = (caster._meteorCount || 0) + 1;
   const isMeteor = caster._meteorCount >= 3;
@@ -1604,9 +1583,7 @@ registerSkillHandler("xdds_fire", (caster, state, log, targets) => {
   }
 });
 registerSkillHandler("bjl_wing", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   const mid = shuffle(enemies.filter((e) => e.row === 1 /* Mid */));
   const back = shuffle(enemies.filter((e) => e.row === 2 /* Back */));
   const picked = [mid[0], back[0]].filter(Boolean);
@@ -1664,9 +1641,7 @@ registerSkillHandler("bjl_wing", (caster, state, log) => {
   }
 });
 registerSkillHandler("dl_stomp", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   const rowMultipliers = { 0: 1.3, 1: 1, 2: 0.7 };
   const baseRatio = caster.def.skill.damage?.[0]?.atkRatio ?? 1.5;
   for (const t of enemies) {
@@ -1717,9 +1692,7 @@ registerSkillHandler("xblr_shot", (caster, state, log) => {
     caster.row = dest.row;
     caster.col = dest.col;
   }
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const nTargets = Math.floor(Math.random() * 3) + 1;
   const targets = shuffle(enemies).slice(0, nTargets);
@@ -1759,9 +1732,7 @@ registerSkillHandler("xblr_shot", (caster, state, log) => {
   });
 });
 registerSkillHandler("bslr_shot", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const row = [0, 1, 2][Math.floor(Math.random() * 3)];
   const targets = enemies.filter((e) => e.row === row);
@@ -1856,9 +1827,7 @@ registerSkillHandler("zzx_buff", (caster, state, log) => {
   });
 });
 registerSkillHandler("bsxl_freeze", (caster, state, log) => {
-  const aliveEnemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const aliveEnemies = getAttackableEnemies(state, caster.team);
   const rows = [...new Set(aliveEnemies.map((u) => u.row))];
   if (rows.length === 0) return;
   const row = rows[Math.floor(Math.random() * rows.length)];
@@ -1937,9 +1906,7 @@ registerSkillHandler("fxz_analyze", (caster, state, log) => {
   });
 });
 registerSkillHandler("bmxz_charge", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const chargeTime = caster._chargeTime || 2;
   caster._chargeTime = void 0;
@@ -1993,9 +1960,7 @@ registerSkillHandler("bmxz_charge", (caster, state, log) => {
   });
 });
 registerSkillHandler("fz_curse", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const target = enemies[Math.floor(Math.random() * enemies.length)];
   const stacks = target._fzMarks || 0;
@@ -2029,9 +1994,7 @@ registerSkillHandler("fz_curse", (caster, state, log) => {
   });
 });
 registerSkillHandler("qm_exorcise", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const pick = shuffle(enemies).slice(0, 4);
   let total = 0;
@@ -2187,9 +2150,7 @@ registerSkillHandler("qd_pray", (caster, state, log) => {
   }
 });
 registerSkillHandler("sqz_combo", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const back = enemies.filter((e) => e.row === 2 /* Back */);
   const pool = back.length > 0 ? back : enemies;
@@ -2222,9 +2183,7 @@ registerSkillHandler("sqz_combo", (caster, state, log) => {
   });
 });
 registerSkillHandler("zq_flame", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const row = [0, 1, 2][Math.floor(Math.random() * 3)];
   const targets = enemies.filter((e) => e.row === row);
@@ -2261,9 +2220,7 @@ registerSkillHandler("zq_flame", (caster, state, log) => {
   });
 });
 registerSkillHandler("sc_judge", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const top = enemies.sort(
     (a, b) => (b._dmgRecent9s || 0) - (a._dmgRecent9s || 0)
@@ -2309,9 +2266,7 @@ registerSkillHandler("sc_judge", (caster, state, log) => {
   });
 });
 registerSkillHandler("xd_sacrifice", (caster, state, log) => {
-  const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead
-  );
+  const enemies = getAttackableEnemies(state, caster.team);
   if (enemies.length === 0) return;
   const t = enemies[Math.floor(Math.random() * enemies.length)];
   t._xdDmgDownUntil = state.time + 4;
@@ -4728,7 +4683,8 @@ function pfx2(u) {
       dragon: "\u9F99",
       holy: "\u5723",
     }[r] || r;
-  return `${u.team === "ally" ? "\u{1F7E6}" : "\u{1F7E5}"}[${tag}]${u.def.name}`;
+  const label = u.summonIndex ? `${u.def.name}#${u.summonIndex}` : u.def.name;
+  return `${u.team === "ally" ? "\u{1F7E6}" : "\u{1F7E5}"}[${tag}]${label}`;
 }
 function shuffle2(arr) {
   const a = [...arr];
@@ -4806,8 +4762,18 @@ function moveToRandomEmpty(unit, state) {
   }
   return false;
 }
+function getAttackableEnemies(state, selfTeam) {
+  return state.units.filter((u) => {
+    if (u.team === selfTeam || u.isDead) return false;
+    if (u.def.id !== "kldd") return true;
+    return !state.units.some(
+      (x) =>
+        x.team === u.team && x.isSummon && x.summonerId === u.id && !x.isDead
+    );
+  });
+}
 function getEnemies(state, selfTeam) {
-  return state.units.filter((u) => u.team !== selfTeam && !u.isDead);
+  return getAttackableEnemies(state, selfTeam);
 }
 function pick2x2(enemies) {
   const r = Math.random() < 0.5 ? 0 : 1;
@@ -5201,6 +5167,7 @@ function initBattle(allyChars, enemyChars) {
       const sk = createUnit(skelDef, 100, kldd2.team, kldd2.row, kldd2.col);
       sk.isSummon = true;
       sk.summonerId = kldd2.id;
+      sk.summonIndex = i + 1;
       state.units.push(sk);
     }
     trackTalent(
@@ -5321,9 +5288,7 @@ function initBattle(allyChars, enemyChars) {
   applyVoidTalents(enemies);
   const applyTraps = (us) => {
     for (const xjlr of us.filter((u) => u.def.id === "xjlr" && !isRuined(u))) {
-      const oppUnits = state.units.filter(
-        (x) => x.team !== xjlr.team && !x.isDead
-      );
+      const oppUnits = getAttackableEnemies(state, xjlr.team);
       const targets = shuffle2(oppUnits).slice(0, 2);
       for (const tr of targets) {
         tr._trapped = true;
@@ -5408,7 +5373,9 @@ function initBattle(allyChars, enemyChars) {
 }
 var MAX_LOG = 2e3;
 function deferDamage(target, dmg, state) {
-  if (dmg <= 0) return;
+  if (target.isDead || dmg <= 0) return;
+  if (target._reviveDebuffUntil && target._reviveDebuffUntil > state.time)
+    dmg = Math.floor(dmg * 1.25);
   addStat2(state, target.id, "hitsTaken", 1);
   if (target._shield > 0) {
     const absorbed = Math.min(target._shield, dmg);
@@ -5461,6 +5428,7 @@ function deferDamage(target, dmg, state) {
 }
 function processDelayedDamage(state) {
   for (const u of state.units) {
+    if (u.isDead) continue;
     if (!u._delayedDamage || u._delayedDamage.length === 0) continue;
     const now = state.time;
     const ready = u._delayedDamage.filter((d) => d.expireTime <= now);
@@ -5481,6 +5449,14 @@ function processTick(state) {
   if (state.phase !== "fighting") return state;
   state.time += 0.1;
   setBattleClock(state.time);
+  for (const u of getAlive(state)) addStat2(state, u.id, "survivalTime", 0.1);
+  for (const u of state.units) {
+    if (u.def.id === "kldd")
+      u._guarded = state.units.some(
+        (x) =>
+          x.team === u.team && x.isSummon && x.summonerId === u.id && !x.isDead
+      );
+  }
   for (const u of state.units) {
     u._statusSnapshot = u.statuses.slice();
     u._hitSnapshot = !!u._wasHitDuringCast;
@@ -7259,7 +7235,7 @@ function updateDeaths(state) {
     if (u.currentHp > 0 || u.isDead) continue;
     u.isDead = true;
     const martyr = state.units.find(
-      (x) => x.team === u.team && x.def.id === "xd"
+      (x) => x.team === u.team && x.def.id === "xd" && !x.isDead
     );
     if (martyr) {
       for (const e of state.units.filter(
@@ -7291,7 +7267,6 @@ function updateDeaths(state) {
       });
     }
     addStat2(state, u.id, "deaths", 1);
-    addStat2(state, u.id, "survivalTime", state.time);
     if (u.def.id === "fxz") {
       for (const x of state.units) {
         if (x._markedByAnalyzer && x.team !== u.team) {
@@ -7460,6 +7435,7 @@ function updateRevivals(state) {
         u.reviving = void 0;
         u.invincibleTimer = 0;
         u.hasRevived = true;
+        u._reviveDebuffUntil = state.time + 15;
         if (u.def.id === "hyz") u._hyzStacks = 5;
         u._undeadDecay = {
           startAt: state.time + revDecayDelay,
@@ -7468,7 +7444,7 @@ function updateRevivals(state) {
         };
         state.battleLog.push({
           time: state.time,
-          text: `\u{1F504} ${u.def.name} \u590D\u6D3B\u81F3${Math.round(reviveHpPct * 100)}%HP\uFF0C\u6280\u80FD\u8FDB\u5165\u51B7\u5374\uFF1B${revDecayDelay}s\u540E\u6BCF\u79D2\u5931\u53BB${Math.round(revDecayPct * 100)}%\u6700\u5927HP`,
+          text: `\u{1F504} ${u.def.name} \u590D\u6D3B\u81F3${Math.round(reviveHpPct * 100)}%HP\uFF0C\u6280\u80FD\u8FDB\u5165\u51B7\u5374\uFF1B${revDecayDelay}s\u540E\u6BCF\u79D2\u5931\u53BB${Math.round(revDecayPct * 100)}%\u6700\u5927HP\uFF1B\u590D\u6D3B\u540E15s\u5185\u9020\u6210\u4F24\u5BB3-25%/\u53D7\u5230\u4F24\u5BB3+25%`,
           type: "status",
         });
       }
@@ -7579,7 +7555,7 @@ function updateMartyrPostmortem(state) {
     xd2._xdPostmortemCd -= 0.1;
     if (xd2._xdPostmortemCd > 0) continue;
     xd2._xdPostmortemCd = (xd2.def.skill.cooldown || 8) * 2;
-    const enemies = state.units.filter((u) => u.team !== xd2.team && !u.isDead);
+    const enemies = getAttackableEnemies(state, xd2.team);
     if (enemies.length === 0) continue;
     const t = enemies[Math.floor(Math.random() * enemies.length)];
     const defSum = (t.currentPhysicalDef || 0) + (t.currentMagicalDef || 0);
@@ -7602,9 +7578,6 @@ function updateVictory(state) {
   if (state.time >= 180 && state.phase === "fighting") {
     state.phase = "finished";
     state.winner = "draw";
-    for (const u of state.units) {
-      if (!u.isDead) addStat2(state, u.id, "survivalTime", state.time);
-    }
     state.battleLog.push({
       time: state.time,
       text: `\u23F0 \u6218\u6597\u8D85\u65F6(180s): \u5E73\u5C40\uFF01`,
@@ -7617,9 +7590,6 @@ function updateVictory(state) {
   if (a.length === 0 || e.length === 0) {
     state.phase = "finished";
     state.winner = a.length > 0 ? "ally" : "enemy";
-    for (const u of state.units) {
-      if (!u.isDead) addStat2(state, u.id, "survivalTime", state.time);
-    }
     state.battleLog.push({
       time: state.time,
       text: `\u{1F3C1} ${state.winner === "ally" ? "\u6211\u65B9" : "\u654C\u65B9"}\u80DC\u5229\uFF01`,
@@ -8415,9 +8385,7 @@ function executeSkill(caster, state, log) {
         const mirrorPct = lv === 3 ? 0.15 : lv === 2 ? 0.1 : 0.04;
         const rawHeal = finalAmount;
         finalAmount = Math.floor(finalAmount * (1 - sp));
-        const recipients = state.units.filter(
-          (x) => x.team !== caster.team && !x.isDead
-        );
+        const recipients = getAttackableEnemies(state, caster.team);
         const share = Math.floor(
           (rawHeal * mirrorPct) / Math.max(1, recipients.length)
         );
@@ -8660,10 +8628,7 @@ function executeSkill(caster, state, log) {
 }
 function addStat2(state, unitId, field, value) {
   const s = state.stats?.find((st) => st.unitId === unitId);
-  if (s && typeof s[field] === "number") {
-    if (field === "survivalTime") s[field] = value;
-    else s[field] += value;
-  }
+  if (s && typeof s[field] === "number") s[field] += value;
   if (field === "totalDamageDealt" && value > 0) {
     const u = state.units?.find((x) => x.id === unitId);
     if (u) {
