@@ -336,8 +336,7 @@ export function calcDamage(
       const abBase = Math.min(baseDef, Math.max(0, def));
       def = Math.max(0, def - abBase) * 0.5;
     }
-    // v2.12 龙吟者: 每龙+5%防/每非龙-4%防
-    if ((defender as any)._lyzDefMult) def *= (defender as any)._lyzDefMult;
+    // v3.4 R16: 龙吟者「每龙+5%防御力」已改为「每龙+5%伤害降低」，在 otherReduction 链结算
     // v3.16 裂地蛮熊拍击: 降20%物防6s
     if (
       (defender as any)._lbmxArmorBreakUntil &&
@@ -396,53 +395,7 @@ export function calcDamage(
       result.finalDamage = 0;
       return result;
     }
-    // v3.0 祈祷者: 减伤
-    let holyDr = 1;
-    // v3.3 龙吟者: 20% 减伤 4s
-    if (
-      (defender as any)._lyzDrUntil &&
-      (defender as any)._lyzDrUntil > nowOf(extraOpts)
-    ) {
-      holyDr *= 1 - ((defender as any)._lyzDr || 0.2);
-    }
-    if (
-      defender._qdDrUntil &&
-      defender._qdDrUntil > nowOf(extraOpts) &&
-      defender._qdDrPct
-    ) {
-      holyDr *= 1 - defender._qdDrPct;
-    }
-    // v3.16 嚎叫巨牛激怒: 减伤35%
-    if ((defender as any)._hlRageDrMult) {
-      holyDr *= 1 - (defender as any)._hlRageDrMult;
-    }
-    // v3.16 美杜莎天赋: 受指向性技能减伤20%，累积3次后40%+石化施法者2s
-    if (defender.def.id === "mds" && (extraOpts as any)?.isSkill === true) {
-      // v3.16: 指向性技能触发
-      const now = nowOf(extraOpts);
-      defender._mdsHitCount = (defender._mdsHitCount || 0) + 1;
-      defender._mdsHitUntil = now;
-      const stacks = Math.min(3, defender._mdsHitCount);
-      holyDr *= 1 - (stacks >= 3 ? 0.4 : 0.2);
-      if (stacks >= 3 && defender._mdsPunished !== now) {
-        defender._mdsPunished = now;
-        attacker.statuses.push({
-          type: StatusType.Petrify,
-          remainingSeconds: 2,
-          stacks: 1,
-        });
-      }
-    }
-    // v3.0 圣骑士圣之护盾: 魔伤-30% (物理分支不适用, 魔法分支在 calcDamage 外层处理)
-    if (
-      defender._sqShieldUntil &&
-      defender._sqShieldUntil > nowOf(extraOpts) &&
-      (type as any) === DamageType.Magical
-    ) {
-      // v3.3 修死代码
-      holyDr *= 0.7;
-    }
-    // v3.0 驱魔者: 防+20%×层
+    // v3.0 驱魔者: 防+20%×层（防御加成，留在物理分支内；不属于减伤）
     if (
       defender.def.id === "qm" &&
       defender._qmLayers &&
@@ -452,15 +405,7 @@ export function calcDamage(
       if (type === DamageType.Physical) def *= 1 + defender._qmLayers * 0.2;
       else if (type === DamageType.Magical) def *= 1 + defender._qmLayers * 0.2;
     }
-    // v3.0 殉道祝福: 受到伤害-10%
-    if (defender._xdBlessUntil && defender._xdBlessUntil > nowOf(extraOpts)) {
-      holyDr *= 0.9;
-    }
-    // P1修复: 圣裁者减伤 (敌方每增益单位5%)
-    if (defender.def.id === "sc" && defender._scDr) {
-      holyDr *= 1 - defender._scDr;
-    }
-    result.afterOtherReduction *= holyDr;
+    // v3.4 R19: 原 holyDr 减伤块（死代码）已移到 otherReduction 通用区统一结算
     // v3.4 R4: 基础防御 = basePart，额外防御 = extraPart
     const basePart = Math.min(baseDef, Math.max(0, def));
     const extraPart = Math.max(0, def - basePart);
@@ -484,8 +429,7 @@ export function calcDamage(
       const abBase = Math.min(baseDef, Math.max(0, def));
       def = Math.max(0, def - abBase) * 0.5;
     }
-    // v2.12 龙吟者: 每龙+5%防/每非龙-4%防
-    if ((defender as any)._lyzDefMult) def *= (defender as any)._lyzDefMult;
+    // v3.4 R16: 龙吟者「每龙+5%防御力」已改为「每龙+5%伤害降低」，在 otherReduction 链结算
     // v3.16 裂地蛮熊拍击: 降20%物防6s
     if (
       (defender as any)._lbmxArmorBreakUntil &&
@@ -536,6 +480,60 @@ export function calcDamage(
     result.afterFrontRow = result.afterDef;
   }
 
+  // --- v3.4 R19: holyDr 减伤链从物理分支死代码提升为通用减伤因子 ---
+  let holyDr = 1;
+  // v3.3 龙吟者: 20% 减伤 4s
+  if (
+    (defender as any)._lyzDrUntil &&
+    (defender as any)._lyzDrUntil > nowOf(extraOpts)
+  ) {
+    holyDr *= 1 - ((defender as any)._lyzDr || 0.2);
+  }
+  // v3.0 祈祷者: 减伤
+  if (
+    defender._qdDrUntil &&
+    defender._qdDrUntil > nowOf(extraOpts) &&
+    defender._qdDrPct
+  ) {
+    holyDr *= 1 - defender._qdDrPct;
+  }
+  // v3.16 嚎叫巨牛激怒: 减伤35%
+  if ((defender as any)._hlRageDrMult) {
+    holyDr *= 1 - (defender as any)._hlRageDrMult;
+  }
+  // v3.16 美杜莎天赋: 受指向性技能减伤20%，累积3次后40%+石化施法者2s
+  if (defender.def.id === "mds" && (extraOpts as any)?.isSkill === true) {
+    const now = nowOf(extraOpts);
+    defender._mdsHitCount = (defender._mdsHitCount || 0) + 1;
+    defender._mdsHitUntil = now;
+    const stacks = Math.min(3, defender._mdsHitCount);
+    holyDr *= 1 - (stacks >= 3 ? 0.4 : 0.2);
+    if (stacks >= 3 && defender._mdsPunished !== now) {
+      defender._mdsPunished = now;
+      attacker.statuses.push({
+        type: StatusType.Petrify,
+        remainingSeconds: 2,
+        stacks: 1,
+      });
+    }
+  }
+  // v3.0 圣骑士圣之护盾: 魔伤-30%（v3.4 R19: 移到通用区后按真实伤害类型判断，原先在物理分支内恒不成立）
+  if (
+    defender._sqShieldUntil &&
+    defender._sqShieldUntil > nowOf(extraOpts) &&
+    type === DamageType.Magical
+  ) {
+    holyDr *= 0.7;
+  }
+  // v3.0 殉道祝福: 受到伤害-10%
+  if (defender._xdBlessUntil && defender._xdBlessUntil > nowOf(extraOpts)) {
+    holyDr *= 0.9;
+  }
+  // P1修复: 圣裁者减伤 (敌方每增益单位5%)
+  if (defender.def.id === "sc" && defender._scDr) {
+    holyDr *= 1 - defender._scDr;
+  }
+
   // --- Other reduction (e.g. Prophet's blessing -30%) ---
   let otherReduction = 1;
   if (extraOpts?.cdrOverride !== undefined) {
@@ -575,6 +573,19 @@ export function calcDamage(
   if (permDR > 0) {
     otherReduction *= 1 - permDR;
   }
+  // v3.4 R13 灵弦歌者治愈琴音: 15% 减伤 6s（增强发动 22.5%）
+  if (
+    (defender as any)._lxgzDrUntil &&
+    (defender as any)._lxgzDrUntil > nowOf(extraOpts) &&
+    (defender as any)._lxgzDrPct
+  ) {
+    otherReduction *= 1 - (defender as any)._lxgzDrPct;
+  }
+  // v3.4 R16 龙吟者天赋: 场上每存在 1 只龙族单位，自身 5% 伤害降低（加法叠层）
+  if ((defender as any)._lyzTalentDrPct) {
+    otherReduction *= 1 - (defender as any)._lyzTalentDrPct;
+  }
+  otherReduction *= holyDr; // v3.4 R19: 统一结算既有多源减伤
   result.afterOtherReduction = result.afterFrontRow * otherReduction;
 
   // --- Block check (physical/magical only, not pure) ---

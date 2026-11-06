@@ -377,8 +377,8 @@ const lxgz: CharacterDef = {
     cooldown: 8,
     castTime: 2,
     description:
-      "弹奏2s→最低2名友方持续恢复+15%减伤6s，每秒自身攻×25%+目标攻×20%", // v3.16 用户
-    heal: { atkRatio: 0.25, targetAtkRatio: 0.15 },
+      "弹奏2s→最低2名友方持续恢复+15%减伤6s，每秒自身攻×25%+目标攻×20%；每次发动后，下次发动每秒治疗+50%、减伤效果+50%", // v3.4 R13 用户直发
+    heal: { atkRatio: 0.25, targetAtkRatio: 0.2 }, // v3.4 R19: 补齐描述口径 目标攻×20%
     aoe: { maxTargets: 2 },
   },
 };
@@ -1056,7 +1056,7 @@ const xjl: CharacterDef = {
   },
   growth: { hp: 75, attack: 7, physicalDef: 3, magicalDef: 2.5 },
   talent:
-    "每秒恢复1%最大HP；我方全场每次技能对敌造成伤害，自身恢复1%最大HP（每2s最多5%）",
+    "每秒恢复1.5%最大HP；我方全场每次技能对敌造成伤害，自身恢复2%最大HP（每2s最多4%）", // v3.4 R14
   skill: {
     id: "xjl_link",
     name: "链接",
@@ -1064,7 +1064,7 @@ const xjl: CharacterDef = {
     cooldown: 9,
     castTime: 0,
     description:
-      "链接1名友方8s: +30%技能增强+双方天赋20%效果，自身代替友方承担25%伤害",
+      "链接1名友方8s: +30%技能增强+被链接友方天赋30%效果，自身代替被链接的友方承担25%伤害", // v3.4 R14
     scriptId: "xjl_link",
   },
 };
@@ -1171,15 +1171,15 @@ const lyz: CharacterDef = {
   },
   growth: { hp: 85, attack: 6, physicalDef: 2.6, magicalDef: 3.2 },
   talent:
-    "自身只能放置在前排，如果因其他技能/天赋而离开前排，每秒失去3%最大生命值。场上每存在1只龙族角色提升自身5%防御力，每存在1只非龙族角色降低自身4%防御力（数双方场上角色，包含自身）。",
+    "自身只能放置在前排，如果因其他技能/天赋而离开前排，每秒失去3%最大生命值。场上每存在1只龙族单位，自身获得5%伤害降低；场上每当有龙族单位阵亡，自身恢复阵亡单位最大生命值×8%血量。", // v3.4 R16
   skill: {
     id: "lyz_heal",
     name: "龙吟治愈",
     tags: ["治疗", "增益"], // v3.0
-    cooldown: 10,
+    cooldown: 9,
     castTime: 2,
     description:
-      "治疗最低HP龙族: 每秒攻击×40%+20%减伤4s；每4次后下次升级，若有阵亡龙族随机复活1只并无敌5s",
+      "治疗最低HP龙族: 每秒攻击×40%+20%减伤4s；每3次后下次升级，升级那次对我方全体龙族生效，若有阵亡龙族随机复活1只并无敌5s", // v3.4 R16
     heal: { atkRatio: 0.4 },
     scriptId: "lyz_heal",
   },
@@ -1284,7 +1284,8 @@ const wlgyz: CharacterDef = {
     tags: ["治疗", "减益"],
     cooldown: 8,
     castTime: 2,
-    description: "施法2s，恢复随机2名友方攻击×160%生命，并诅咒随机1名敌方5s",
+    description:
+      "施法2s，优先恢复前排2名友方攻击×160%生命，并诅咒随机1名敌方5s；每发动2次后，下次发动冷却-60%", // v3.4 R15
     heal: { atkRatio: 1.6 },
     aoe: { maxTargets: 2 },
     effects: [{ type: StatusType.Curse, duration: 5 }],
@@ -1411,11 +1412,11 @@ const sq: CharacterDef = {
     id: "sq_heal",
     name: "圣光治愈",
     tags: ["治疗"],
-    cooldown: 12,
+    cooldown: 11,
     castTime: 0,
     description:
-      "我方2名圣职者恢复攻击×120%生命；有负面则驱散并+30%治疗；圣之护盾(魔伤-30%，反弹10%原本伤害为纯粹)7s", // v3.15g: 125→115 // v3.5: 200→240%
-    heal: { fixedAdd: 0, atkRatio: 1.2 },
+      "我方2名圣职者恢复攻击×210%生命；有负面则驱散并+30%治疗；圣之护盾(魔伤-30%，反弹10%原本伤害为纯粹)7s", // v3.4 R17: 冷却12→11 / 治疗120%→210%
+    heal: { fixedAdd: 0, atkRatio: 2.1 },
     scriptId: "sq_heal",
   },
 };

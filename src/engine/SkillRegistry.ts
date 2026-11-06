@@ -31,7 +31,7 @@ export function shuffle<T>(arr: T[]): T[] {
 
 // 龙吟者 — 特殊治疗+升级机制+临时复活
 registerSkillHandler("lyz_heal", (caster, state, log) => {
-  // v3.3: 治疗最低 HP 的 1 名龙族，每秒攻击×40% 并 20%减伤 4s
+  // v3.4 R16: 普通发动治疗最低 HP 的 1 名龙族；升级那次对我方全体龙族生效
   const dragons = state.units
     .filter(
       (u: any) => u.team === caster.team && !u.isDead && u.def.race === "dragon"
@@ -39,22 +39,25 @@ registerSkillHandler("lyz_heal", (caster, state, log) => {
     .sort((a: any, b: any) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
   if (dragons.length === 0) return;
   caster.castCount = (caster.castCount || 0) + 1;
-  const upgraded = caster.castCount % 5 === 0; // v3.3 每 4 次后，下次发动升级
-  const t = dragons[0];
-  t.statuses.push({
-    type: "lyz_heal_dot" as any,
-    remainingSeconds: 4,
-    stacks: 1,
-    value: Math.floor(caster.currentAttack * 0.4),
-    sourceId: caster.id,
-  } as any);
-  t._lyzDrUntil = state.time + 4;
-  t._lyzDr = 0.2;
-  log.push({
-    time: state.time,
-    text: `🎵 ${caster.def.name} 治疗 ${t.def.name}: 每秒攻击×40% + 减伤20% ×4s`,
-    type: "heal",
-  });
+  const upgraded = caster.castCount % 4 === 0; // v3.4 R16: 升级所需次数 4→3
+  // v3.4 R16: 升级那次技能变为我方全体存活龙族生效
+  const targets = upgraded ? dragons : [dragons[0]];
+  for (const t of targets) {
+    t.statuses.push({
+      type: "lyz_heal_dot" as any,
+      remainingSeconds: 4,
+      stacks: 1,
+      value: Math.floor(caster.currentAttack * 0.4),
+      sourceId: caster.id,
+    } as any);
+    t._lyzDrUntil = state.time + 4;
+    t._lyzDr = 0.2;
+    log.push({
+      time: state.time,
+      text: `🎵 ${caster.def.name} 治疗 ${t.def.name}: 每秒攻击×40% + 减伤20% ×4s${upgraded ? " [升级·全体龙族]" : ""}`,
+      type: "heal",
+    });
+  }
   // v3.3 升级: 若存在阵亡龙族，随机复活 1 只并无敌 5s，结束后重新阵亡
   if (upgraded) {
     const dead = state.units.filter(
@@ -168,14 +171,21 @@ registerSkillHandler("xjl_link", (caster, state, log) => {
     mages[0] ||
     allies.sort((a: any, b: any) => b.currentAttack - a.currentAttack)[0];
   if (target) {
+    // v3.4 R19-5: 链接刷新时先回滚旧增量，避免 skillPower 反复叠加（到期只回滚一次会残留）
+    const prevBonus = (target as any)._xjlSkillPowerBonus || 0;
+    if (prevBonus > 0) {
+      target.skillPower = Math.max(1, (target.skillPower || 1) - prevBonus);
+    }
     target.skillPower = (target.skillPower || 1) + 0.3;
-    target.lifeSteal = (target.lifeSteal || 0) + 0.2;
-    // v2.12 链接伤害承担: 目标受伤25%转移给小精灵 (描述值)
+    (target as any)._xjlSkillPowerBonus = 0.3; // v3.4 R19: 记录增量，链接到期精确回滚
+    // v3.4 R19: 删除 lifeSteal 近似；被链接友方获得小精灵天赋 30% 效果
+    (target as any)._xjlTalentShare = 0.3;
+    // v3.4 R14 链接伤害承担: 目标受伤25%转移给小精灵（deferDamage 实现，40%→25%）
     target._linkOwnerId = caster.id;
     target._linkUntil = state.time + 8;
     log.push({
       time: state.time,
-      text: `🔗 ${caster.def.name} 链接 ${target.def.name}: 技能+30%吸血+20%`,
+      text: `🔗 ${caster.def.name} 链接 ${target.def.name}: 技能+30% 小精灵天赋30%效果`,
       type: "status",
     });
   }
@@ -1437,7 +1447,7 @@ registerSkillHandler("qm_exorcise", (caster, state, log) => {
   });
 });
 
-// 圣骑士 — 治疗2圣职者200% + 驱散+30% + 圣之护盾
+// 圣骑士 — 治疗2圣职者210% + 驱散+30% + 圣之护盾（v3.4 R17）
 registerSkillHandler("sq_heal", (caster, state, log) => {
   const allies = state.units.filter(
     (u: any) => u.team === caster.team && !u.isDead && u.def.race === "holy"
@@ -1472,7 +1482,7 @@ registerSkillHandler("sq_heal", (caster, state, log) => {
       mult = 1.3;
     }
     const heal = Math.floor(
-      caster.currentAttack * (caster.def.skill.heal?.atkRatio ?? 2.0) * mult
+      caster.currentAttack * (caster.def.skill.heal?.atkRatio ?? 2.1) * mult
     );
     caster.lastHealTarget = t.id; // v3.15: 治疗统计
     t.lastHeal = { value: heal, time: state.time };

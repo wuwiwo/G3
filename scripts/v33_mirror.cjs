@@ -227,7 +227,6 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
       const abBase = Math.min(baseDef, Math.max(0, def));
       def = Math.max(0, def - abBase) * 0.5;
     }
-    if (defender._lyzDefMult) def *= defender._lyzDefMult;
     if (
       defender._lbmxArmorBreakUntil &&
       defender._lbmxArmorBreakUntil > nowOf(extraOpts)
@@ -272,42 +271,6 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
       result.finalDamage = 0;
       return result;
     }
-    let holyDr = 1;
-    if (defender._lyzDrUntil && defender._lyzDrUntil > nowOf(extraOpts)) {
-      holyDr *= 1 - (defender._lyzDr || 0.2);
-    }
-    if (
-      defender._qdDrUntil &&
-      defender._qdDrUntil > nowOf(extraOpts) &&
-      defender._qdDrPct
-    ) {
-      holyDr *= 1 - defender._qdDrPct;
-    }
-    if (defender._hlRageDrMult) {
-      holyDr *= 1 - defender._hlRageDrMult;
-    }
-    if (defender.def.id === "mds" && extraOpts?.isSkill === true) {
-      const now = nowOf(extraOpts);
-      defender._mdsHitCount = (defender._mdsHitCount || 0) + 1;
-      defender._mdsHitUntil = now;
-      const stacks = Math.min(3, defender._mdsHitCount);
-      holyDr *= 1 - (stacks >= 3 ? 0.4 : 0.2);
-      if (stacks >= 3 && defender._mdsPunished !== now) {
-        defender._mdsPunished = now;
-        attacker.statuses.push({
-          type: "petrify" /* Petrify */,
-          remainingSeconds: 2,
-          stacks: 1,
-        });
-      }
-    }
-    if (
-      defender._sqShieldUntil &&
-      defender._sqShieldUntil > nowOf(extraOpts) &&
-      type === "magical" /* Magical */
-    ) {
-      holyDr *= 0.7;
-    }
     if (
       defender.def.id === "qm" &&
       defender._qmLayers &&
@@ -319,13 +282,6 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
       else if (type === "magical" /* Magical */)
         def *= 1 + defender._qmLayers * 0.2;
     }
-    if (defender._xdBlessUntil && defender._xdBlessUntil > nowOf(extraOpts)) {
-      holyDr *= 0.9;
-    }
-    if (defender.def.id === "sc" && defender._scDr) {
-      holyDr *= 1 - defender._scDr;
-    }
-    result.afterOtherReduction *= holyDr;
     const basePart = Math.min(baseDef, Math.max(0, def));
     const extraPart = Math.max(0, def - basePart);
     if (ignoreExtraDef) def = basePart;
@@ -346,7 +302,6 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
       const abBase = Math.min(baseDef, Math.max(0, def));
       def = Math.max(0, def - abBase) * 0.5;
     }
-    if (defender._lyzDefMult) def *= defender._lyzDefMult;
     if (
       defender._lbmxArmorBreakUntil &&
       defender._lbmxArmorBreakUntil > nowOf(extraOpts)
@@ -381,6 +336,48 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
   } else {
     result.afterFrontRow = result.afterDef;
   }
+  let holyDr = 1;
+  if (defender._lyzDrUntil && defender._lyzDrUntil > nowOf(extraOpts)) {
+    holyDr *= 1 - (defender._lyzDr || 0.2);
+  }
+  if (
+    defender._qdDrUntil &&
+    defender._qdDrUntil > nowOf(extraOpts) &&
+    defender._qdDrPct
+  ) {
+    holyDr *= 1 - defender._qdDrPct;
+  }
+  if (defender._hlRageDrMult) {
+    holyDr *= 1 - defender._hlRageDrMult;
+  }
+  if (defender.def.id === "mds" && extraOpts?.isSkill === true) {
+    const now = nowOf(extraOpts);
+    defender._mdsHitCount = (defender._mdsHitCount || 0) + 1;
+    defender._mdsHitUntil = now;
+    const stacks = Math.min(3, defender._mdsHitCount);
+    holyDr *= 1 - (stacks >= 3 ? 0.4 : 0.2);
+    if (stacks >= 3 && defender._mdsPunished !== now) {
+      defender._mdsPunished = now;
+      attacker.statuses.push({
+        type: "petrify" /* Petrify */,
+        remainingSeconds: 2,
+        stacks: 1,
+      });
+    }
+  }
+  if (
+    defender._sqShieldUntil &&
+    defender._sqShieldUntil > nowOf(extraOpts) &&
+    type === "magical" /* Magical */
+  ) {
+    holyDr *= 0.7;
+  }
+  if (defender._xdBlessUntil && defender._xdBlessUntil > nowOf(extraOpts)) {
+    holyDr *= 0.9;
+  }
+  if (defender.def.id === "sc" && defender._scDr) {
+    holyDr *= 1 - defender._scDr;
+  }
   let otherReduction = 1;
   if (extraOpts?.cdrOverride !== void 0) {
     otherReduction *= extraOpts.cdrOverride;
@@ -412,6 +409,17 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
   if (permDR > 0) {
     otherReduction *= 1 - permDR;
   }
+  if (
+    defender._lxgzDrUntil &&
+    defender._lxgzDrUntil > nowOf(extraOpts) &&
+    defender._lxgzDrPct
+  ) {
+    otherReduction *= 1 - defender._lxgzDrPct;
+  }
+  if (defender._lyzTalentDrPct) {
+    otherReduction *= 1 - defender._lyzTalentDrPct;
+  }
+  otherReduction *= holyDr;
   result.afterOtherReduction = result.afterFrontRow * otherReduction;
   if (type !== "pure" /* Pure */) {
     const blockChance = getBlockChance(defender.def.race, defender.row === 0);
@@ -527,13 +535,15 @@ var BASE_BONDS = {
       attackSpeedBonus: 15,
       hitRateBonus: 20,
       special:
-        "\u53D7\u5230[\u5207\u5165]\u6280\u80FD\u4F24\u5BB3-15%+\u6BCF6\u6B21\u653B\u51FB\u989D\u59161\u76EE\u6807(35%\u4F24\u5BB3)",
+        "\u53D7\u5230[\u5207\u5165]\u6280\u80FD\u4F24\u5BB3-15%+\u6BCF6\u6B21\u653B\u51FB\u989D\u59161\u76EE\u6807(30%\u4F24\u5BB3)",
+      // v3.4 R19: 35→30%
     },
     4: {
       attackSpeedBonus: 30,
       hitRateBonus: 40,
       special:
-        "\u53D7\u5230[\u5207\u5165]\u6280\u80FD\u4F24\u5BB3-25%+\u81EA\u8EAB+10%\u653B(\u6700\u591A3\u5C42/40s)+\u6BCF5\u6B21\u653B\u51FB\u989D\u59161\u76EE\u6807(70%\u4F24\u5BB3)",
+        "\u53D7\u5230[\u5207\u5165]\u6280\u80FD\u4F24\u5BB3-25%+\u81EA\u8EAB+10%\u653B(\u6700\u591A3\u5C42/20s)+\u6BCF5\u6B21\u653B\u51FB\u989D\u59161\u76EE\u6807(60%\u4F24\u5BB3)",
+      // v3.4 R19: 40s→20s / 70→60%
     },
   },
   ["warrior" /* Warrior */]: {
@@ -718,22 +728,24 @@ registerSkillHandler("lyz_heal", (caster, state, log) => {
     .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
   if (dragons.length === 0) return;
   caster.castCount = (caster.castCount || 0) + 1;
-  const upgraded = caster.castCount % 5 === 0;
-  const t = dragons[0];
-  t.statuses.push({
-    type: "lyz_heal_dot",
-    remainingSeconds: 4,
-    stacks: 1,
-    value: Math.floor(caster.currentAttack * 0.4),
-    sourceId: caster.id,
-  });
-  t._lyzDrUntil = state.time + 4;
-  t._lyzDr = 0.2;
-  log.push({
-    time: state.time,
-    text: `\u{1F3B5} ${caster.def.name} \u6CBB\u7597 ${t.def.name}: \u6BCF\u79D2\u653B\u51FB\xD740% + \u51CF\u4F2420% \xD74s`,
-    type: "heal",
-  });
+  const upgraded = caster.castCount % 4 === 0;
+  const targets = upgraded ? dragons : [dragons[0]];
+  for (const t of targets) {
+    t.statuses.push({
+      type: "lyz_heal_dot",
+      remainingSeconds: 4,
+      stacks: 1,
+      value: Math.floor(caster.currentAttack * 0.4),
+      sourceId: caster.id,
+    });
+    t._lyzDrUntil = state.time + 4;
+    t._lyzDr = 0.2;
+    log.push({
+      time: state.time,
+      text: `\u{1F3B5} ${caster.def.name} \u6CBB\u7597 ${t.def.name}: \u6BCF\u79D2\u653B\u51FB\xD740% + \u51CF\u4F2420% \xD74s${upgraded ? " [\u5347\u7EA7\xB7\u5168\u4F53\u9F99\u65CF]" : ""}`,
+      type: "heal",
+    });
+  }
   if (upgraded) {
     const dead = state.units.filter(
       (u) =>
@@ -837,13 +849,18 @@ registerSkillHandler("xjl_link", (caster, state, log) => {
   const target =
     mages[0] || allies.sort((a, b) => b.currentAttack - a.currentAttack)[0];
   if (target) {
+    const prevBonus = target._xjlSkillPowerBonus || 0;
+    if (prevBonus > 0) {
+      target.skillPower = Math.max(1, (target.skillPower || 1) - prevBonus);
+    }
     target.skillPower = (target.skillPower || 1) + 0.3;
-    target.lifeSteal = (target.lifeSteal || 0) + 0.2;
+    target._xjlSkillPowerBonus = 0.3;
+    target._xjlTalentShare = 0.3;
     target._linkOwnerId = caster.id;
     target._linkUntil = state.time + 8;
     log.push({
       time: state.time,
-      text: `\u{1F517} ${caster.def.name} \u94FE\u63A5 ${target.def.name}: \u6280\u80FD+30%\u5438\u8840+20%`,
+      text: `\u{1F517} ${caster.def.name} \u94FE\u63A5 ${target.def.name}: \u6280\u80FD+30% \u5C0F\u7CBE\u7075\u5929\u8D4B30%\u6548\u679C`,
       type: "status",
     });
   }
@@ -2066,7 +2083,7 @@ registerSkillHandler("sq_heal", (caster, state, log) => {
       mult = 1.3;
     }
     const heal = Math.floor(
-      caster.currentAttack * (caster.def.skill.heal?.atkRatio ?? 2) * mult
+      caster.currentAttack * (caster.def.skill.heal?.atkRatio ?? 2.1) * mult
     );
     caster.lastHealTarget = t.id;
     t.lastHeal = { value: heal, time: state.time };
@@ -2738,9 +2755,10 @@ var lxgz = {
     cooldown: 8,
     castTime: 2,
     description:
-      "\u5F39\u594F2s\u2192\u6700\u4F4E2\u540D\u53CB\u65B9\u6301\u7EED\u6062\u590D+15%\u51CF\u4F246s\uFF0C\u6BCF\u79D2\u81EA\u8EAB\u653B\xD725%+\u76EE\u6807\u653B\xD720%",
-    // v3.16 用户
-    heal: { atkRatio: 0.25, targetAtkRatio: 0.15 },
+      "\u5F39\u594F2s\u2192\u6700\u4F4E2\u540D\u53CB\u65B9\u6301\u7EED\u6062\u590D+15%\u51CF\u4F246s\uFF0C\u6BCF\u79D2\u81EA\u8EAB\u653B\xD725%+\u76EE\u6807\u653B\xD720%\uFF1B\u6BCF\u6B21\u53D1\u52A8\u540E\uFF0C\u4E0B\u6B21\u53D1\u52A8\u6BCF\u79D2\u6CBB\u7597+50%\u3001\u51CF\u4F24\u6548\u679C+50%",
+    // v3.4 R13 用户直发
+    heal: { atkRatio: 0.25, targetAtkRatio: 0.2 },
+    // v3.4 R19: 补齐描述口径 目标攻×20%
     aoe: { maxTargets: 2 },
   },
 };
@@ -3431,7 +3449,8 @@ var xjl = {
   },
   growth: { hp: 75, attack: 7, physicalDef: 3, magicalDef: 2.5 },
   talent:
-    "\u6BCF\u79D2\u6062\u590D1%\u6700\u5927HP\uFF1B\u6211\u65B9\u5168\u573A\u6BCF\u6B21\u6280\u80FD\u5BF9\u654C\u9020\u6210\u4F24\u5BB3\uFF0C\u81EA\u8EAB\u6062\u590D1%\u6700\u5927HP\uFF08\u6BCF2s\u6700\u591A5%\uFF09",
+    "\u6BCF\u79D2\u6062\u590D1.5%\u6700\u5927HP\uFF1B\u6211\u65B9\u5168\u573A\u6BCF\u6B21\u6280\u80FD\u5BF9\u654C\u9020\u6210\u4F24\u5BB3\uFF0C\u81EA\u8EAB\u6062\u590D2%\u6700\u5927HP\uFF08\u6BCF2s\u6700\u591A4%\uFF09",
+  // v3.4 R14
   skill: {
     id: "xjl_link",
     name: "\u94FE\u63A5",
@@ -3439,7 +3458,8 @@ var xjl = {
     cooldown: 9,
     castTime: 0,
     description:
-      "\u94FE\u63A51\u540D\u53CB\u65B98s: +30%\u6280\u80FD\u589E\u5F3A+\u53CC\u65B9\u5929\u8D4B20%\u6548\u679C\uFF0C\u81EA\u8EAB\u4EE3\u66FF\u53CB\u65B9\u627F\u62C525%\u4F24\u5BB3",
+      "\u94FE\u63A51\u540D\u53CB\u65B98s: +30%\u6280\u80FD\u589E\u5F3A+\u88AB\u94FE\u63A5\u53CB\u65B9\u5929\u8D4B30%\u6548\u679C\uFF0C\u81EA\u8EAB\u4EE3\u66FF\u88AB\u94FE\u63A5\u7684\u53CB\u65B9\u627F\u62C525%\u4F24\u5BB3",
+    // v3.4 R14
     scriptId: "xjl_link",
   },
 };
@@ -3548,16 +3568,18 @@ var lyz = {
   },
   growth: { hp: 85, attack: 6, physicalDef: 2.6, magicalDef: 3.2 },
   talent:
-    "\u81EA\u8EAB\u53EA\u80FD\u653E\u7F6E\u5728\u524D\u6392\uFF0C\u5982\u679C\u56E0\u5176\u4ED6\u6280\u80FD/\u5929\u8D4B\u800C\u79BB\u5F00\u524D\u6392\uFF0C\u6BCF\u79D2\u5931\u53BB3%\u6700\u5927\u751F\u547D\u503C\u3002\u573A\u4E0A\u6BCF\u5B58\u57281\u53EA\u9F99\u65CF\u89D2\u8272\u63D0\u5347\u81EA\u8EAB5%\u9632\u5FA1\u529B\uFF0C\u6BCF\u5B58\u57281\u53EA\u975E\u9F99\u65CF\u89D2\u8272\u964D\u4F4E\u81EA\u8EAB4%\u9632\u5FA1\u529B\uFF08\u6570\u53CC\u65B9\u573A\u4E0A\u89D2\u8272\uFF0C\u5305\u542B\u81EA\u8EAB\uFF09\u3002",
+    "\u81EA\u8EAB\u53EA\u80FD\u653E\u7F6E\u5728\u524D\u6392\uFF0C\u5982\u679C\u56E0\u5176\u4ED6\u6280\u80FD/\u5929\u8D4B\u800C\u79BB\u5F00\u524D\u6392\uFF0C\u6BCF\u79D2\u5931\u53BB3%\u6700\u5927\u751F\u547D\u503C\u3002\u573A\u4E0A\u6BCF\u5B58\u57281\u53EA\u9F99\u65CF\u5355\u4F4D\uFF0C\u81EA\u8EAB\u83B7\u5F975%\u4F24\u5BB3\u964D\u4F4E\uFF1B\u573A\u4E0A\u6BCF\u5F53\u6709\u9F99\u65CF\u5355\u4F4D\u9635\u4EA1\uFF0C\u81EA\u8EAB\u6062\u590D\u9635\u4EA1\u5355\u4F4D\u6700\u5927\u751F\u547D\u503C\xD78%\u8840\u91CF\u3002",
+  // v3.4 R16
   skill: {
     id: "lyz_heal",
     name: "\u9F99\u541F\u6CBB\u6108",
     tags: ["\u6CBB\u7597", "\u589E\u76CA"],
     // v3.0
-    cooldown: 10,
+    cooldown: 9,
     castTime: 2,
     description:
-      "\u6CBB\u7597\u6700\u4F4EHP\u9F99\u65CF: \u6BCF\u79D2\u653B\u51FB\xD740%+20%\u51CF\u4F244s\uFF1B\u6BCF4\u6B21\u540E\u4E0B\u6B21\u5347\u7EA7\uFF0C\u82E5\u6709\u9635\u4EA1\u9F99\u65CF\u968F\u673A\u590D\u6D3B1\u53EA\u5E76\u65E0\u654C5s",
+      "\u6CBB\u7597\u6700\u4F4EHP\u9F99\u65CF: \u6BCF\u79D2\u653B\u51FB\xD740%+20%\u51CF\u4F244s\uFF1B\u6BCF3\u6B21\u540E\u4E0B\u6B21\u5347\u7EA7\uFF0C\u5347\u7EA7\u90A3\u6B21\u5BF9\u6211\u65B9\u5168\u4F53\u9F99\u65CF\u751F\u6548\uFF0C\u82E5\u6709\u9635\u4EA1\u9F99\u65CF\u968F\u673A\u590D\u6D3B1\u53EA\u5E76\u65E0\u654C5s",
+    // v3.4 R16
     heal: { atkRatio: 0.4 },
     scriptId: "lyz_heal",
   },
@@ -3667,7 +3689,8 @@ var wlgyz = {
     cooldown: 8,
     castTime: 2,
     description:
-      "\u65BD\u6CD52s\uFF0C\u6062\u590D\u968F\u673A2\u540D\u53CB\u65B9\u653B\u51FB\xD7160%\u751F\u547D\uFF0C\u5E76\u8BC5\u5492\u968F\u673A1\u540D\u654C\u65B95s",
+      "\u65BD\u6CD52s\uFF0C\u4F18\u5148\u6062\u590D\u524D\u63922\u540D\u53CB\u65B9\u653B\u51FB\xD7160%\u751F\u547D\uFF0C\u5E76\u8BC5\u5492\u968F\u673A1\u540D\u654C\u65B95s\uFF1B\u6BCF\u53D1\u52A82\u6B21\u540E\uFF0C\u4E0B\u6B21\u53D1\u52A8\u51B7\u5374-60%",
+    // v3.4 R15
     heal: { atkRatio: 1.6 },
     aoe: { maxTargets: 2 },
     effects: [{ type: "curse" /* Curse */, duration: 5 }],
@@ -3806,12 +3829,12 @@ var sq = {
     id: "sq_heal",
     name: "\u5723\u5149\u6CBB\u6108",
     tags: ["\u6CBB\u7597"],
-    cooldown: 12,
+    cooldown: 11,
     castTime: 0,
     description:
-      "\u6211\u65B92\u540D\u5723\u804C\u8005\u6062\u590D\u653B\u51FB\xD7120%\u751F\u547D\uFF1B\u6709\u8D1F\u9762\u5219\u9A71\u6563\u5E76+30%\u6CBB\u7597\uFF1B\u5723\u4E4B\u62A4\u76FE(\u9B54\u4F24-30%\uFF0C\u53CD\u5F3910%\u539F\u672C\u4F24\u5BB3\u4E3A\u7EAF\u7CB9)7s",
-    // v3.15g: 125→115 // v3.5: 200→240%
-    heal: { fixedAdd: 0, atkRatio: 1.2 },
+      "\u6211\u65B92\u540D\u5723\u804C\u8005\u6062\u590D\u653B\u51FB\xD7210%\u751F\u547D\uFF1B\u6709\u8D1F\u9762\u5219\u9A71\u6563\u5E76+30%\u6CBB\u7597\uFF1B\u5723\u4E4B\u62A4\u76FE(\u9B54\u4F24-30%\uFF0C\u53CD\u5F3910%\u539F\u672C\u4F24\u5BB3\u4E3A\u7EAF\u7CB9)7s",
+    // v3.4 R17: 冷却12→11 / 治疗120%→210%
+    heal: { fixedAdd: 0, atkRatio: 2.1 },
     scriptId: "sq_heal",
   },
 };
@@ -5235,16 +5258,6 @@ function initBattle(allyChars, enemyChars) {
         }
       }
     }
-    const lyzUnit = us.find((u) => u.def.id === "lyz" && !isRuined(u));
-    if (lyzUnit) {
-      const allUnits = state.units.filter((x) => !x.isDead);
-      const dragonCnt = allUnits.filter((x) => x.def.race === "dragon").length;
-      const nonDragonCnt = allUnits.length - dragonCnt;
-      lyzUnit._lyzDefMult = Math.max(
-        0.3,
-        1 + dragonCnt * 0.05 - nonDragonCnt * 0.04
-      );
-    }
     const bjl2 = us.find((u) => u.def.id === "bjl" && !isRuined(u));
     if (bjl2) {
       const oppUnits = state.units.filter((x) => x.team !== bjl2.team);
@@ -5393,7 +5406,7 @@ function deferDamage(target, dmg, state) {
       (x) => x.id === target._linkOwnerId && !x.isDead
     );
     if (owner) {
-      const share = Math.floor(dmg * 0.4);
+      const share = Math.floor(dmg * 0.25);
       owner.currentHp -= share;
       addStat2(state, owner.id, "totalDamageReceived", share);
       dmg -= share;
@@ -5880,7 +5893,8 @@ function updateStatuses(state) {
         if (s.lastCycle !== cycle) {
           s.lastCycle = cycle;
           const heal = Math.floor(
-            s.value + (unit.currentAttack || unit.def.stats.attack) * 0.1
+            (s.value + (unit.currentAttack || unit.def.stats.attack) * 0.2) *
+              (s.healMult || 1)
           );
           let antiHealMult =
             unit._antiHealMult &&
@@ -6170,6 +6184,12 @@ function updateStatuses(state) {
       unit._bslrDebuffUntil = void 0;
     }
     if (unit._linkUntil && state.time >= unit._linkUntil) {
+      unit.skillPower = Math.max(
+        1,
+        (unit.skillPower || 1) - (unit._xjlSkillPowerBonus || 0.3)
+      );
+      unit._xjlSkillPowerBonus = void 0;
+      unit._xjlTalentShare = void 0;
       unit._linkOwnerId = void 0;
       unit._linkUntil = void 0;
     }
@@ -6193,6 +6213,26 @@ function updateStatuses(state) {
       });
       unit._hammerDueAt = void 0;
       unit._hammerDelayedDmg = void 0;
+    }
+    const xjlRegenCycle = Math.floor(state.time);
+    const xjlRegenShare = unit.def.id === "xjl" ? 1 : unit._xjlTalentShare || 0;
+    if (
+      xjlRegenShare > 0 &&
+      !isRuined(unit) &&
+      unit._xjlRegenCycle !== xjlRegenCycle
+    ) {
+      unit._xjlRegenCycle = xjlRegenCycle;
+      const regen = Math.floor(unit.maxHp * 0.015 * xjlRegenShare);
+      unit.currentHp = Math.min(unit.maxHp, unit.currentHp + regen);
+      addStat2(state, unit.id, "totalHealingReceived", regen);
+    }
+    if (unit.def.id === "lyz") {
+      const dragonCnt = state.units.filter(
+        (x) => !x.isDead && x.def.race === "dragon"
+      ).length;
+      unit._lyzTalentDrPct = isRuined(unit)
+        ? void 0
+        : Math.min(0.8, dragonCnt * 0.05);
     }
     const lyzCycle = Math.floor(state.time);
     if (
@@ -6606,7 +6646,9 @@ function updateCasting(state) {
       unit._wasDamagedDuringCast = false;
       executeSkill(unit, state, state.battleLog);
       unit.isCasting = false;
-      unit.cooldownRemaining = unit.def.skill.cooldown;
+      unit.cooldownRemaining =
+        unit.def.skill.cooldown * (unit._nextCdMult ?? 1);
+      unit._nextCdMult = void 0;
     }
   }
 }
@@ -6659,7 +6701,8 @@ function updateSkills(state) {
       unit.castTimer = sk.castTime;
     } else {
       executeSkill(unit, state, state.battleLog);
-      unit.cooldownRemaining = sk.cooldown;
+      unit.cooldownRemaining = sk.cooldown * (unit._nextCdMult ?? 1);
+      unit._nextCdMult = void 0;
     }
   }
 }
@@ -7191,7 +7234,7 @@ function updateAutoAttacks(state) {
       ).length;
       if (hunterCnt >= 3 && unit.def.race === "hunter") {
         const extraEvery = hunterCnt >= 4 ? 5 : 6;
-        const extraDmgRatio = hunterCnt >= 4 ? 0.7 : 0.35;
+        const extraDmgRatio = hunterCnt >= 4 ? 0.6 : 0.3;
         if (unit._attackCount % extraEvery === 0) {
           const extraEnemies = getEnemies(state, unit.team).filter(
             (e) => !targets.some((t) => t?.id === e.id)
@@ -7234,6 +7277,20 @@ function updateDeaths(state) {
   for (const u of state.units) {
     if (u.currentHp > 0 || u.isDead) continue;
     u.isDead = true;
+    if (u.def.race === "dragon") {
+      const lyzHeal = Math.floor(u.maxHp * 0.08);
+      for (const lyz2 of state.units.filter(
+        (x) => x.def.id === "lyz" && !x.isDead && !isRuined(x)
+      )) {
+        lyz2.currentHp = Math.min(lyz2.maxHp, lyz2.currentHp + lyzHeal);
+        addStat2(state, lyz2.id, "totalHealingReceived", lyzHeal);
+        state.battleLog.push({
+          time: state.time,
+          text: `\u{1F409} ${u.def.name} \u9635\u4EA1: ${lyz2.def.name} \u9F99\u541F\u6062\u590D ${lyzHeal}`,
+          type: "heal",
+        });
+      }
+    }
     const martyr = state.units.find(
       (x) => x.team === u.team && x.def.id === "xd" && !x.isDead
     );
@@ -7654,6 +7711,10 @@ function ensureLogIds(state) {
 function executeSkill(caster, state, log) {
   addStat2(state, caster.id, "skillCasts", 1);
   const sk = caster.def.skill;
+  if (sk.id === "wlgyz_heal") {
+    caster._wlgyzCastCount = (caster._wlgyzCastCount || 0) + 1;
+    if (caster._wlgyzCastCount % 3 === 0) caster._nextCdMult = 0.4;
+  }
   if (!state.skillStats) state.skillStats = {};
   const skey = `${caster.id}_${sk.id}`;
   if (!state.skillStats[skey]) {
@@ -7858,7 +7919,8 @@ function executeSkill(caster, state, log) {
         if (!t._hunterBondLayers) t._hunterBondLayers = [];
         t._hunterBondLayers.push({
           value: hunterCount2 >= 4 ? 0.1 : 0.05,
-          expire: state.time + (hunterCount2 >= 4 ? 40 : 25),
+          expire: state.time + (hunterCount2 >= 4 ? 20 : 25),
+          // v3.4 R19: 4名 40s→20s
         });
         if (t._hunterBondLayers.length > 3) t._hunterBondLayers.shift();
         log.push({
@@ -8052,18 +8114,20 @@ function executeSkill(caster, state, log) {
           (u) =>
             u.team === caster.team &&
             !u.isDead &&
-            u.def.id === "xjl" &&
+            (u.def.id === "xjl" || u._xjlTalentShare) &&
             !isRuined(u)
         )) {
+          const xjlShare =
+            xjl2.def.id === "xjl" ? 1 : xjl2._xjlTalentShare || 0.3;
           if (
             xjl2._xjlWindowStart === void 0 ||
-            state.time - xjl2._xjlWindowStart >= 3
+            state.time - xjl2._xjlWindowStart >= 2
           ) {
             xjl2._xjlWindowStart = state.time;
             xjl2._xjlWindowHeal = 0;
           }
-          const cap = Math.floor(xjl2.maxHp * 0.06);
-          const want = Math.floor(xjl2.maxHp * 0.015);
+          const cap = Math.floor(xjl2.maxHp * 0.04 * xjlShare);
+          const want = Math.floor(xjl2.maxHp * 0.02 * xjlShare);
           const heal = Math.max(
             0,
             Math.min(want, cap - (xjl2._xjlWindowHeal || 0))
@@ -8286,6 +8350,15 @@ function executeSkill(caster, state, log) {
     }
   }
   if (sk.heal) {
+    let lxgzEnhanced = false;
+    let lxgzHealMult = 1;
+    let lxgzDrPct = 0.15;
+    if (sk.id === "lxgz_heal") {
+      lxgzEnhanced = caster._lxgzEnhanceNext === true;
+      caster._lxgzEnhanceNext = !lxgzEnhanced;
+      lxgzHealMult = lxgzEnhanced ? 1.5 : 1;
+      lxgzDrPct = lxgzEnhanced ? 0.225 : 0.15;
+    }
     let targets = [];
     if (sk.id === "dxm_heal") {
       const beast = allies
@@ -8302,7 +8375,14 @@ function executeSkill(caster, state, log) {
         .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp)
         .slice(0, 2);
     } else if (sk.id === "wlgyz_heal") {
-      targets = shuffle2(allies).slice(0, 2);
+      const byHp = (arr) =>
+        arr
+          .slice()
+          .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
+      targets = [
+        ...byHp(allies.filter((a) => a.row === 0 /* Front */)),
+        ...byHp(allies.filter((a) => a.row !== 0 /* Front */)),
+      ].slice(0, 2);
     } else if (sk.id === "hbfl_heal") {
       const candidates = allies.filter(
         (a) => a.def.race === "dragon" && a.currentHp / a.maxHp < 0.75
@@ -8339,14 +8419,17 @@ function executeSkill(caster, state, log) {
       if (sk.id === "lxgz_heal") {
         t.statuses.push({
           type: "lxgz_heal_dot",
-          remainingSeconds: 7,
+          remainingSeconds: 6,
           stacks: 1,
-          value: Math.floor(caster.currentAttack * 0.2),
+          value: Math.floor(caster.currentAttack * 0.25),
           sourceId: caster.id,
+          healMult: lxgzHealMult,
         });
+        t._lxgzDrUntil = state.time + 6;
+        t._lxgzDrPct = lxgzDrPct;
         log.push({
           time: state.time,
-          text: `\u{1F3B6} ${caster.def.name} \u6CBB\u6108\u7434\u97F3 ${t.def.name}: \u6BCF\u79D220%+\u76EE\u6807\u653B10%\xD77s`,
+          text: `\u{1F3B6} ${caster.def.name} \u6CBB\u6108\u7434\u97F3 ${t.def.name}: \u6BCF\u79D225%+\u76EE\u6807\u653B20%\xD76s + ${Math.round(lxgzDrPct * 100)}%\u51CF\u4F246s${lxgzEnhanced ? "\uFF08\u589E\u5F3A\uFF09" : ""}`,
           type: "heal",
         });
         continue;

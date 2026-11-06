@@ -661,19 +661,8 @@ export function initBattle(
         }
       }
     }
-    // v2.12 龙吟者: 每龙+5%防/每非龙-4%防 (数双方全场, 含自身)
-    const lyzUnit = us.find((u: any) => u.def.id === "lyz" && !isRuined(u));
-    if (lyzUnit) {
-      const allUnits = state.units.filter((x: any) => !x.isDead);
-      const dragonCnt = allUnits.filter(
-        (x: any) => x.def.race === "dragon"
-      ).length;
-      const nonDragonCnt = allUnits.length - dragonCnt;
-      lyzUnit._lyzDefMult = Math.max(
-        0.3,
-        1 + dragonCnt * 0.05 - nonDragonCnt * 0.04
-      );
-    }
+    // v3.4 R16: 龙吟者「每龙+5%防御力 / 每非龙-4%防御力」已删除，
+    // 改为「每龙+5%伤害降低」，在 updateStatuses 每 tick 按场上存活龙族数动态重算
     // v2.32c 暴君龙: 全场非龙防御-40% (45→40)
     const bjl = us.find((u: any) => u.def.id === "bjl" && !isRuined(u));
     if (bjl) {
@@ -833,7 +822,7 @@ function deferDamage(target: any, dmg: number, state: any) {
     addStat(state, target.id, "shieldAbsorbed", absorbed);
   }
   if (dmg <= 0) return;
-  // v2.12 小精灵链接: 目标受伤25%转移给小精灵承担
+  // v3.4 R14 小精灵链接: 目标受伤25%转移给小精灵承担（用户直发值，覆盖 v3.16 的 40%）
   if (
     target._linkOwnerId &&
     target._linkUntil &&
@@ -843,7 +832,7 @@ function deferDamage(target: any, dmg: number, state: any) {
       (x: any) => x.id === target._linkOwnerId && !x.isDead
     );
     if (owner) {
-      const share = Math.floor(dmg * 0.4); // v3.16: 25→40%
+      const share = Math.floor(dmg * 0.25); // v3.4 R14: 40→25%
       owner.currentHp -= share;
       addStat(state, owner.id, "totalDamageReceived", share);
       dmg -= share;
@@ -1370,14 +1359,15 @@ function updateStatuses(state: any) {
           });
         }
       }
-      // v3.14 灵弦歌者持续治疗: 每秒20%自身攻击+10%目标攻击（每秒结算一次）
+      // v3.4 R19 灵弦歌者持续治疗: 每秒自身攻×25%+目标攻×20%（每秒结算一次）
       if ((s.type as string) === "lxgz_heal_dot" && s.value) {
         const cycle = Math.floor(state.time);
         if ((s as any).lastCycle !== cycle) {
           (s as any).lastCycle = cycle;
           const heal = Math.floor(
-            s.value + (unit.currentAttack || unit.def.stats.attack) * 0.1
-          );
+            (s.value + (unit.currentAttack || unit.def.stats.attack) * 0.2) *
+              ((s as any).healMult || 1)
+          ); // v3.4 R13: 增强发动每秒治疗 ×1.5
           // v3.0 冰霜猎人减疗: 目标受到治疗效果-60%
           let antiHealMult =
             unit._antiHealMult &&
@@ -1689,8 +1679,14 @@ function updateStatuses(state: any) {
       unit._bslrSlowDown = undefined;
       unit._bslrDebuffUntil = undefined;
     }
-    // v2.12 小精灵链接过期
+    // v2.12 小精灵链接过期（v3.4 R19: 回滚 +30% 技能增强与小精灵天赋效果）
     if (unit._linkUntil && state.time >= unit._linkUntil) {
+      unit.skillPower = Math.max(
+        1,
+        (unit.skillPower || 1) - ((unit as any)._xjlSkillPowerBonus || 0.3)
+      );
+      (unit as any)._xjlSkillPowerBonus = undefined;
+      (unit as any)._xjlTalentShare = undefined;
       unit._linkOwnerId = undefined;
       unit._linkUntil = undefined;
     }
@@ -1717,6 +1713,29 @@ function updateStatuses(state: any) {
       });
       unit._hammerDueAt = undefined;
       unit._hammerDelayedDmg = undefined;
+    }
+    // v3.4 R19 小精灵天赋: 每秒恢复 1.5% 最大HP；被链接友方获得 30% 效果（0.45%）
+    const xjlRegenCycle = Math.floor(state.time);
+    const xjlRegenShare =
+      unit.def.id === "xjl" ? 1 : (unit as any)._xjlTalentShare || 0;
+    if (
+      xjlRegenShare > 0 &&
+      !isRuined(unit) &&
+      (unit as any)._xjlRegenCycle !== xjlRegenCycle
+    ) {
+      (unit as any)._xjlRegenCycle = xjlRegenCycle;
+      const regen = Math.floor(unit.maxHp * 0.015 * xjlRegenShare);
+      unit.currentHp = Math.min(unit.maxHp, unit.currentHp + regen);
+      addStat(state, unit.id, "totalHealingReceived", regen);
+    }
+    // v3.4 R16 龙吟者天赋: 场上每存在 1 只龙族单位 → 自身 +5% 伤害降低（每 tick 动态重算）
+    if (unit.def.id === "lyz") {
+      const dragonCnt = state.units.filter(
+        (x: any) => !x.isDead && x.def.race === "dragon"
+      ).length;
+      (unit as any)._lyzTalentDrPct = isRuined(unit)
+        ? undefined
+        : Math.min(0.8, dragonCnt * 0.05); // 0.8 仅作数值安全上限，防 otherReduction 为负
     }
     // v2.12 龙吟者天赋: 离开前排每秒-3%最大生命
     const lyzCycle = Math.floor(state.time);
@@ -2161,7 +2180,10 @@ function updateCasting(state: any) {
       unit._wasDamagedDuringCast = false;
       executeSkill(unit, state, state.battleLog);
       unit.isCasting = false;
-      unit.cooldownRemaining = unit.def.skill.cooldown;
+      // v3.4 R15: 亡灵歌咏者「下次发动 CD-60%」等一次性冷却倍率
+      unit.cooldownRemaining =
+        unit.def.skill.cooldown * ((unit as any)._nextCdMult ?? 1);
+      (unit as any)._nextCdMult = undefined;
     }
   }
 }
@@ -2216,7 +2238,9 @@ function updateSkills(state: any) {
       unit.castTimer = sk.castTime;
     } else {
       executeSkill(unit, state, state.battleLog);
-      unit.cooldownRemaining = sk.cooldown;
+      // v3.4 R15: 一次性冷却倍率
+      unit.cooldownRemaining = sk.cooldown * ((unit as any)._nextCdMult ?? 1);
+      (unit as any)._nextCdMult = undefined;
     }
   }
 }
@@ -2753,7 +2777,7 @@ function updateAutoAttacks(state: any) {
       ).length;
       if (hunterCnt >= 3 && unit.def.race === "hunter") {
         const extraEvery = hunterCnt >= 4 ? 5 : 6; // v3.4: 按 V3.3 设计源 每5/6次
-        const extraDmgRatio = hunterCnt >= 4 ? 0.7 : 0.35; // v3.4: 70%/35%
+        const extraDmgRatio = hunterCnt >= 4 ? 0.6 : 0.3; // v3.4 R19: 60%/30%
         if (unit._attackCount % extraEvery === 0) {
           const extraEnemies = getEnemies(state, unit.team).filter(
             (e: any) => !targets.some((t: any) => t?.id === e.id)
@@ -2796,6 +2820,21 @@ function updateDeaths(state: any) {
   for (const u of state.units) {
     if (u.currentHp > 0 || u.isDead) continue;
     u.isDead = true;
+    // v3.4 R16 龙吟者天赋: 场上每当有龙族单位阵亡，场上所有存活龙吟者恢复阵亡单位最大HP×8%
+    if (u.def.race === "dragon") {
+      const lyzHeal = Math.floor(u.maxHp * 0.08);
+      for (const lyz of state.units.filter(
+        (x: any) => x.def.id === "lyz" && !x.isDead && !isRuined(x)
+      )) {
+        lyz.currentHp = Math.min(lyz.maxHp, lyz.currentHp + lyzHeal);
+        addStat(state, lyz.id, "totalHealingReceived", lyzHeal);
+        state.battleLog.push({
+          time: state.time,
+          text: `🐉 ${u.def.name} 阵亡: ${lyz.def.name} 龙吟恢复 ${lyzHeal}`,
+          type: "heal",
+        });
+      }
+    }
     // v3.3 殉道者: 每当友方角色阵亡（不再只在自身阵亡时）
     // v3.4 R7: 天赋只在殉道者存活时触发（技能阵亡后继续发动另见 updateMartyrPostmortem）
     const martyr = state.units.find(
@@ -3272,6 +3311,13 @@ function ensureLogIds(state: any) {
 function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
   addStat(state, caster.id, "skillCasts", 1);
   const sk = caster.def.skill;
+  // v3.4 R15 亡灵歌咏者: 每累计发动 2 次后，下次发动冷却 -60%（3 次一循环）
+  if (sk.id === "wlgyz_heal") {
+    (caster as any)._wlgyzCastCount =
+      ((caster as any)._wlgyzCastCount || 0) + 1;
+    if ((caster as any)._wlgyzCastCount % 3 === 0)
+      (caster as any)._nextCdMult = 0.4;
+  }
   // v2.13 Step2: 施放次数 (casts=施放, hits=命中)
   if (!state.skillStats) state.skillStats = {};
   const skey = `${caster.id}_${sk.id}`;
@@ -3499,11 +3545,11 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         (u: any) => u.def.race === "hunter"
       ).length;
       if (hunterCount2 >= 3 && t.def.race === "hunter") {
-        // v3.3 猎人羁绊: 被 #切入 命中后自身 +5%/+10% 攻击（最多 3 层，25s/40s，每层独立计时）
+        // v3.4 R19 猎人羁绊: 被 #切入 命中后自身 +5%/+10% 攻击（最多 3 层，25s/20s，每层独立计时）
         if (!t._hunterBondLayers) t._hunterBondLayers = [];
         t._hunterBondLayers.push({
           value: hunterCount2 >= 4 ? 0.1 : 0.05,
-          expire: state.time + (hunterCount2 >= 4 ? 40 : 25),
+          expire: state.time + (hunterCount2 >= 4 ? 20 : 25), // v3.4 R19: 4名 40s→20s
         });
         if (t._hunterBondLayers.length > 3) t._hunterBondLayers.shift();
         log.push({
@@ -3701,24 +3747,26 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
           caster.currentHp = Math.min(caster.maxHp, caster.currentHp + ls);
           addStat(state, caster.id, "lifeStealHealing", ls);
         }
-        // v2.9 小精灵天赋: 我方技能造成伤害 → 回1.5%HP (每3s最多6%)
+        // v3.4 R19 小精灵天赋: 我方技能造成伤害 → 回2%HP (每2s最多4%)；被链接友方获得 30% 效果
         for (const xjl of state.units.filter(
           (u: any) =>
             u.team === caster.team &&
             !u.isDead &&
-            u.def.id === "xjl" &&
+            (u.def.id === "xjl" || (u as any)._xjlTalentShare) &&
             !isRuined(u)
         )) {
-          // v2.9 按文档: 每次技能伤害回1.5%, 每3s窗口累计上限6%
+          const xjlShare =
+            xjl.def.id === "xjl" ? 1 : (xjl as any)._xjlTalentShare || 0.3;
+          // v3.4 R14 按用户直发: 每次技能伤害回2%, 每2s窗口累计上限4%（被链接方按 share 缩放）
           if (
             xjl._xjlWindowStart === undefined ||
-            state.time - xjl._xjlWindowStart >= 3
+            state.time - xjl._xjlWindowStart >= 2
           ) {
             xjl._xjlWindowStart = state.time;
             xjl._xjlWindowHeal = 0;
           }
-          const cap = Math.floor(xjl.maxHp * 0.06);
-          const want = Math.floor(xjl.maxHp * 0.015);
+          const cap = Math.floor(xjl.maxHp * 0.04 * xjlShare);
+          const want = Math.floor(xjl.maxHp * 0.02 * xjlShare);
           const heal = Math.max(
             0,
             Math.min(want, cap - (xjl._xjlWindowHeal || 0))
@@ -3944,6 +3992,17 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
 
   // --- Heal ---
   if (sk.heal) {
+    // v3.4 R13 灵弦歌者: 每次发动后，下次发动增强（每秒治疗×1.5 / 减伤效果×1.5）
+    let lxgzEnhanced = false;
+    let lxgzHealMult = 1;
+    let lxgzDrPct = 0.15;
+    if (sk.id === "lxgz_heal") {
+      lxgzEnhanced = (caster as any)._lxgzEnhanceNext === true;
+      // v3.4 R19: 用户裁定「普通 / 增强交替」——增强那次不再向下传递
+      (caster as any)._lxgzEnhanceNext = !lxgzEnhanced;
+      lxgzHealMult = lxgzEnhanced ? 1.5 : 1;
+      lxgzDrPct = lxgzEnhanced ? 0.225 : 0.15;
+    }
     let targets: ArenaUnit[] = [];
     if (sk.id === "dxm_heal") {
       // Prefer beast, then lowest HP
@@ -3962,7 +4021,15 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp)
         .slice(0, 2);
     } else if (sk.id === "wlgyz_heal") {
-      targets = shuffle(allies).slice(0, 2);
+      // v3.4 R15: 优先前排（按 HP% 升序），不足 2 名再按 HP% 补其它排
+      const byHp = (arr: ArenaUnit[]) =>
+        arr
+          .slice()
+          .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
+      targets = [
+        ...byHp(allies.filter((a) => a.row === Row.Front)),
+        ...byHp(allies.filter((a) => a.row !== Row.Front)),
+      ].slice(0, 2);
     } else if (sk.id === "hbfl_heal") {
       const candidates = allies.filter(
         (a) => a.def.race === "dragon" && a.currentHp / a.maxHp < 0.75
@@ -3999,18 +4066,21 @@ function executeSkill(caster: ArenaUnit, state: any, log: any[]) {
         });
         continue;
       }
-      // v3.14 灵弦歌者: 每秒恢复7s (20%自身攻击+10%目标攻击)
+      // v3.4 R19: 补齐描述口径 每秒自身攻×25%+目标攻×20% / 6s + 15%减伤6s；增强发动治疗×1.5/减伤22.5%
       if (sk.id === "lxgz_heal") {
         t.statuses.push({
           type: "lxgz_heal_dot" as any,
-          remainingSeconds: 7,
+          remainingSeconds: 6,
           stacks: 1,
-          value: Math.floor(caster.currentAttack * 0.2),
+          value: Math.floor(caster.currentAttack * 0.25),
           sourceId: caster.id,
+          healMult: lxgzHealMult,
         } as any);
+        (t as any)._lxgzDrUntil = state.time + 6;
+        (t as any)._lxgzDrPct = lxgzDrPct;
         log.push({
           time: state.time,
-          text: `🎶 ${caster.def.name} 治愈琴音 ${t.def.name}: 每秒20%+目标攻10%×7s`,
+          text: `🎶 ${caster.def.name} 治愈琴音 ${t.def.name}: 每秒25%+目标攻20%×6s + ${Math.round(lxgzDrPct * 100)}%减伤6s${lxgzEnhanced ? "（增强）" : ""}`,
           type: "heal",
         });
         continue;

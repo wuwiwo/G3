@@ -38,13 +38,13 @@ const BASE_BONDS: Record<Race, TierData> = {
     3: {
       attackSpeedBonus: 15,
       hitRateBonus: 20,
-      special: "受到[切入]技能伤害-15%+每6次攻击额外1目标(35%伤害)",
+      special: "受到[切入]技能伤害-15%+每6次攻击额外1目标(30%伤害)", // v3.4 R19: 35→30%
     },
     4: {
       attackSpeedBonus: 30,
       hitRateBonus: 40,
       special:
-        "受到[切入]技能伤害-25%+自身+10%攻(最多3层/40s)+每5次攻击额外1目标(70%伤害)",
+        "受到[切入]技能伤害-25%+自身+10%攻(最多3层/20s)+每5次攻击额外1目标(60%伤害)", // v3.4 R19: 40s→20s / 70→60%
     },
   },
   [Race.Warrior]: {
