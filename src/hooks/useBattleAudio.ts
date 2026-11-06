@@ -61,7 +61,9 @@ export function useBattleAudio(state: BattleState | null): void {
 
     if (state.phase === "finished" && !finishedPlayed.current) {
       finishedPlayed.current = true;
-      sound.play(state.winner === "ally" ? "victory" : "defeat");
+      // v3.3: 超时是平局而不是失败，不播放失败音效
+      if (state.winner === "ally") sound.play("victory");
+      else if (state.winner === "enemy") sound.play("defeat");
     }
   }, [state]);
 }

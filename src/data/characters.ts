@@ -15,14 +15,15 @@ const pp: CharacterDef = {
     attackInterval: 4.2,
   },
   growth: { hp: 140, attack: 6, physicalDef: 3.2, magicalDef: 3 },
-  talent: "睡眠时驱散异常+每秒回2%+Lv×0.02%HP",
+  talent: "睡眠时驱散异常+每秒回1%+Lv×0.01%HP（v3.3 回复减半）",
   skill: {
     id: "pp_sleep",
     name: "催眠",
     tags: ["控制", "切入"], // v3.0
     cooldown: 12,
     castTime: 0,
-    description: "令自身与敌人后排随机一名同时进入睡眠4s(后排无人只对自己)",
+    description:
+      "催眠: 随机发动1个效果：①自身与随机1名敌人(优先后排)同睡4s ②自身睡5s+随机2名敌人困意6s命中率-75%",
     scriptId: "pp_sleep",
   },
 };
@@ -39,15 +40,15 @@ const hl: CharacterDef = {
     attackInterval: 4,
   },
   growth: { hp: 90, attack: 9, physicalDef: 4.8, magicalDef: 2.8 },
-  talent:
-    "开场怒吼: 敌方全体攻击-20%持续8s",
+  talent: "开场怒吼: 敌方全体攻击-30%持续5s，之后-15%持续8s",
   skill: {
     id: "hl_rage",
     name: "激怒",
     tags: ["增益"],
     cooldown: 999,
     castTime: 0,
-    description: "首次HP<25%时，提升35%攻击+20%攻速，免疫异常至战斗结束",
+    description:
+      "激怒: 自身HP首次降至60%进入激怒，每3s失去2%最大HP，获得20%减伤+30%攻+50%攻速，免疫异常至战斗结束(每场一次)",
   },
 };
 
@@ -68,10 +69,11 @@ const yl: CharacterDef = {
     id: "yl_stealth",
     name: "潜行",
     tags: ["切入"],
-    cooldown: 6,
+    cooldown: 7,
     castTime: 0,
-    description: "潜行(仅免疫普攻，可被技能选中，无回血)，下次攻击210%+40%吸血，优先后排", // v2.36: 2.1→1.9
-    damage: [{ type: DamageType.Physical, atkRatio: 2.0 }],
+    description:
+      "潜行: 无法被普攻选中(技能可选)、期间不回血；攻击240%+50%吸血，优先后排(前10/中40/后50)，攻击后解除", // v2.36: 2.1→1.9
+    damage: [{ type: DamageType.Physical, atkRatio: 2.4 }],
     priority: [
       { row: Row.Back, chance: 50 },
       { row: Row.Mid, chance: 40 },
@@ -100,8 +102,8 @@ const hx: CharacterDef = {
     tags: ["切入"],
     cooldown: 5,
     castTime: 0,
-    description: "对随机2名各造成220-260%伤害，优先后排", // v3.3: 210-240→225-255%
-    damage: [{ type: DamageType.Physical, atkRatio: 2.45 }], // P0: 特判2.3-2.6覆盖
+    description: "对随机2名各造成210-240%伤害，优先后排", // v3.4 R3 用户直发
+    damage: [{ type: DamageType.Physical, atkRatio: 2.25 }], // R3: 区间中值兜底，handler 覆盖
     aoe: { maxTargets: 2 },
     priority: [
       { row: Row.Back, chance: 60 },
@@ -123,14 +125,16 @@ const zzx: CharacterDef = {
     attackInterval: 4,
   },
   growth: { hp: 50, attack: 5, physicalDef: 2.5, magicalDef: 4.5 },
-  talent: "开场封锁敌方同阵型角色的天赋与技能8s",
+  talent:
+    "战斗开始，使敌方同阵型位置所有敌人前7s天赋与技能禁用并失效（不视为异常，无法驱散）",
   skill: {
     id: "zzx_buff",
     name: "鼓舞",
     tags: ["增益"],
-    cooldown: 7,
+    cooldown: 8,
     castTime: 0,
-    description: "使一名友方（优先兽族）提升35%攻击力5s+自身与目标物减15%魔减25%持续7s",
+    description:
+      "使自身以外1名随机友方(优先兽族)+25%攻7s；自身与目标获得10%物理减伤+20%魔法减伤7s",
     scriptId: "zzx_buff",
   },
 };
@@ -147,14 +151,15 @@ const dxm: CharacterDef = {
     attackInterval: 3.6,
   },
   growth: { hp: 80, attack: 6, physicalDef: 2.5, magicalDef: 2.4 },
-  talent: "同阵型友方技能CD-18%(含自身)",
+  talent: "所有友方角色技能冷却减少12%（含自身）",
   skill: {
     id: "dxm_heal",
     name: "治愈",
     tags: ["治疗"],
-    cooldown: 7,
+    cooldown: 6,
     castTime: 0,
-    description: "治疗最低血量友方（优先兽族）：6×等级+攻击×185%(第4次+90%+驱散)",
+    description:
+      "治疗我方最低血量1名(优先兽族)：7×等级+攻击×190%；每发动2次，下次治疗+50%并驱散",
     heal: { fixedAdd: 600, atkRatio: 2.25 },
   },
 };
@@ -171,20 +176,20 @@ const lbmx: CharacterDef = {
     attackInterval: 3.3,
   },
   growth: { hp: 80, attack: 7.5, physicalDef: 3.8, magicalDef: 2.2 },
-  talent: "开场咆哮嘲讽敌方前排5s(禁技能,每场一次)",
+  talent:
+    "开场咆哮: 嘲讽敌方随机3名强制攻击自身4s，期间敌方无法使用技能(每场一次)",
   skill: {
     id: "lbmx_smash",
     name: "拍击",
     tags: ["范围"],
     cooldown: 8,
     castTime: 0,
-    description: "前中排全体攻击×220%物理+降20%物防6s（后排-30%伤害）", // v3.16f 回滚: 文档220%, // v3.3: 215→225%
-    damage: [{ type: DamageType.Physical, atkRatio: 1.8 }],
+    description:
+      "拍击地面: 随机1排全体攻击×200%物理+降20%物防6s（优先前中排，后排-35%，命中3人-35%）", // v3.16f 回滚: 文档220%, // v3.3: 215→225%
+    damage: [{ type: DamageType.Physical, atkRatio: 2.0 }],
     aoe: { rows: [Row.Front, Row.Mid], maxTargets: 6 },
   },
 };
-
-
 
 const mmx: CharacterDef = {
   id: "mmx",
@@ -198,16 +203,18 @@ const mmx: CharacterDef = {
     attackInterval: 4,
   },
   growth: { hp: 100, attack: 7, physicalDef: 4.9, magicalDef: 3.4 },
-  talent: "每7s进入卷曲状态持续4s: 攻-20%防+50%",
+  talent:
+    "每间隔12s进入卷曲6s: 攻-20% 防+40%，额外格挡自身防御总和×20%的技能伤害",
   skill: {
     id: "mmx_stomp",
     name: "踩踏",
     tags: ["切入"], // v3.0
-    cooldown: 8,
+    cooldown: 10,
     castTime: 1,
-    description: "125%攻击物理+自身防御×2.5纯粹（前排+20%，后排缴械3s）", // v3.2: 110→125%
+    description:
+      "踩踏1名敌人: 75%攻击物理+自身防御×2纯粹（前排+25%，后排缴械3s）", // v3.2: 110→125%
     damage: [
-      { type: DamageType.Physical, atkRatio: 1.25 },
+      { type: DamageType.Physical, atkRatio: 0.75 },
       { type: DamageType.Pure, selfDefMultiplier: 2.5 },
     ],
   },
@@ -228,15 +235,15 @@ const sszs: CharacterDef = {
   },
   growth: { hp: 65, attack: 8.2, physicalDef: 2, magicalDef: 1.8 },
   talent:
-    "获得 30%+等级×0.1%的闪避效果（100级：40%），被 #切入 技能选中时有 10%几率闪避那次技能", // v3.0 重做
+    "获得30%+等级×0.1%闪避(100级40%)；每累计受2次#切入技能，下次#切入技能100%闪避", // v3.0 重做
   skill: {
     id: "sszs_bind",
     name: "束缚射击",
     tags: ["控制"],
-    cooldown: 6,
+    cooldown: 5,
     castTime: 0,
-    description: "攻击×280%物理+束缚4s", // v3.16 用户: 360→280+束缚4s
-    damage: [{ type: DamageType.Physical, atkRatio: 2.8 }],
+    description: "对1名敌方射击: 攻击×270%物理+束缚4s", // v3.16 用户: 360→280+束缚4s
+    damage: [{ type: DamageType.Physical, atkRatio: 2.7 }],
     effects: [{ type: StatusType.Bind, duration: 4 }],
   },
 };
@@ -254,15 +261,16 @@ const bslr: CharacterDef = {
   },
   growth: { hp: 60, attack: 9, physicalDef: 2, magicalDef: 2 },
   talent:
-    "自身造成伤害有 35%几率无视目标的基础防御，还有 25%几率使目标受到治疗效果-60%，持续 4 s。如果自身受到攻击这个天赋会暂时失效 2 s", // v3.0,
+    "造成伤害37.5%几率无视额外防御并降低目标25%受疗2s；自身受攻击时天赋暂失效1s（技能视为攻击，几率40%）", // v3.4
   skill: {
     id: "bslr_shot",
     name: "持续射击",
     tags: [],
-    cooldown: 8,
+    cooldown: 7,
     castTime: 0,
-    description: "对1排敌人持续射击3s，每秒攻击×75%，每次降6%攻速（叠3层）",
-    damage: [{ type: DamageType.Physical, atkRatio: 0.75 }],
+    description:
+      "对敌方1排持续射击1.5s，每0.5秒攻击×90%物理；每次降10%攻或20%攻速4s(最多3层)",
+    damage: [{ type: DamageType.Physical, atkRatio: 0.9 }],
     aoe: { maxTargets: 3 },
     scriptId: "bslr_shot",
   },
@@ -281,7 +289,7 @@ const hqs: CharacterDef = {
   },
   growth: { hp: 75, attack: 8.6, physicalDef: 2, magicalDef: 2 },
   talent:
-    "自身被 #切入 技能选中为目标时提升自身 30%+等级×0.4%的防御力与 15%+等级×0.1%的攻击力,持续 5 s(可叠加，这个效果优先于 #切入 技能生效)", // v3.0,
+    "自身无法被#切入技能选为对象，受到#切入技能伤害为0，自身对后排敌人伤害+10%", // v3.0,
   skill: {
     id: "hqs_snipe",
     name: "狙击",
@@ -291,7 +299,7 @@ const hqs: CharacterDef = {
     description: "物防最高敌人：物防×4纯粹+攻击×300%物理", // v3.16 用户: 320→300
     damage: [
       { type: DamageType.Pure, defMultiplier: 4 },
-      { type: DamageType.Physical, atkRatio: 3.0 } // v3.16
+      { type: DamageType.Physical, atkRatio: 3.0 }, // v3.16
     ],
   },
 };
@@ -308,15 +316,14 @@ const mds: CharacterDef = {
     attackInterval: 2.8,
   },
   growth: { hp: 80, attack: 8.0, physicalDef: 2.3, magicalDef: 2.5 },
-  talent:
-    "自身攻击力-15%,会同时对 2 名敌人发动攻击,自身对处于[束缚]状态的敌人攻击有 35%+等级×0.1%几率使其[石化]2 s",
+  talent: "自身攻-12%，同时攻击2名敌人；每攻击2次，下次60%束缚4s / 40%石化2s",
   skill: {
     id: "mds_skill",
     name: "石化凝视",
     tags: ["控制"],
     cooldown: 8,
     castTime: 0,
-    description: "前中后各1名敌人：攻击×135%纯粹+石化3s", // v3.16 用户: 280魔法+束缚→135纯粹+石化
+    description: "前中后排各1名敌人: 攻击×135%纯粹+石化3s，自身恢复30%伤害血量", // v3.16 用户: 280魔法+束缚→135纯粹+石化
     damage: [{ type: DamageType.Pure, atkRatio: 1.35 }],
     effects: [{ type: StatusType.Petrify, duration: 3 }],
     scriptId: "mds_skill",
@@ -335,16 +342,16 @@ const zfyx: CharacterDef = {
     attackInterval: 2.5,
   },
   growth: { hp: 75, attack: 9.5, physicalDef: 2.5, magicalDef: 2 },
-  talent:
-    "敌方发动带有 #切入 标签的技能伤害-35%，同时敌方每次发动 #切入 标签技能，我方场上所有单位提升 10%攻击力，持续 6 s（最大叠加 4 层）", // v3.0 重做,
+  talent: "敌方每次发动#切入技能，敌人先受35%伤害，我方全体+10%攻9s(最多4层)", // v3.0 重做,
   skill: {
     id: "zfyx_arrow",
     name: "三连射",
     tags: ["移动"],
     cooldown: 8,
     castTime: 0,
-    description: "发射3枚弓箭，每次攻击×110%随机敌人，发射后随机移动至空位+闪避40%4s", // v3.16f 回滚: 文档110%
-    damage: [{ type: DamageType.Physical, atkRatio: 1.1 }],
+    description:
+      "发射3枚弓箭，每次攻击×125%随机敌人；每次发射后移动至空位+闪避40% 5s", // v3.16f 回滚: 文档110%
+    damage: [{ type: DamageType.Physical, atkRatio: 1.25 }],
     aoe: { maxTargets: 3 },
   },
 };
@@ -362,15 +369,16 @@ const lxgz: CharacterDef = {
   },
   growth: { hp: 80, attack: 8, physicalDef: 2.4, magicalDef: 2.2 },
   talent:
-    "自身发动治疗技能时,会使受治疗的目标获得 [激昂] 效果:提升 10%+等级×0.1%的攻击力与 12% 攻击速度,持续 5 秒。（100级：20%攻击提升）",
+    "自身治疗或攻击，使我方随机1名获得[激昂]: +10%+等级×0.1%攻与15%攻速，持续5s",
   skill: {
     id: "lxgz_heal",
     name: "治愈琴音",
     tags: ["治疗"],
-    cooldown: 10,
+    cooldown: 8,
     castTime: 2,
-    description: "弹奏2s→最低2名友方持续恢复8s，每秒自身攻击×15%+目标攻击×15%", // v3.16 用户
-    heal: { atkRatio: 0.15, targetAtkRatio: 0.15 },
+    description:
+      "弹奏2s→最低2名友方持续恢复+15%减伤6s，每秒自身攻×25%+目标攻×20%", // v3.16 用户
+    heal: { atkRatio: 0.25, targetAtkRatio: 0.15 },
     aoe: { maxTargets: 2 },
   },
 };
@@ -390,14 +398,15 @@ const crzs: CharacterDef = {
   },
   growth: { hp: 75, attack: 8.5, physicalDef: 2.5, magicalDef: 2 },
   talent:
-    "自身每秒失去最大生命值×1%的血量,受到伤害+10%，对敌方同阵型的所有敌方角色造成每秒自身攻击力×1.5%+等级×0.02%的纯粹伤害（100级：攻击力×3.5%）",
+    "每秒失去1%最大HP，受伤+10%，受疗+20%；对敌方同阵型全体每秒造成攻击×1.5%+等级×0.02%纯粹(100级3.5%)",
   skill: {
     id: "crzs_punch",
     name: "灼热拳击",
     tags: [],
     cooldown: 4,
     castTime: 0,
-    description: "攻击×220%物理+灼烧3s，自受15%反伤（敌方前·中排有角色时，不会对后排发动）", // v3.16 用户: 200→220
+    description:
+      "攻击×220%物理+灼烧3s，自受10%反伤（敌方前·中排有角色时不会对后排发动）", // v3.16 用户: 200→220
     damage: [{ type: DamageType.Physical, atkRatio: 2.2 }],
     effects: [{ type: StatusType.Burn, duration: 3, value: 0.05 }],
   },
@@ -415,14 +424,14 @@ const hd: CharacterDef = {
     attackInterval: 2.5,
   },
   growth: { hp: 70, attack: 9, physicalDef: 2.4, magicalDef: 1.8 },
-  talent: "自身攻击力+15%,命中率-15%,自身攻击如果没有命中,会受到 50%的反伤",
+  talent: "攻击+10%，魔法防御+20%，命中率-15%；攻击未命中受到50%反伤",
   skill: {
     id: "hd_slash",
     name: "斩击",
     tags: ["范围"], // P2修复
-    cooldown: 8,
+    cooldown: 7,
     castTime: 1.5,
-    description: "随机1排全体：攻击×250%物理（命中3人-35%）", // v3.16 用户: 270→250+命中惩罚
+    description: "随机1排全体: 攻击×250%物理（命中3人-35%）", // v3.16 用户: 270→250+命中惩罚
     damage: [{ type: DamageType.Physical, atkRatio: 2.5 }],
     aoe: { maxTargets: 3 },
   },
@@ -441,14 +450,15 @@ const fxz: CharacterDef = {
   },
   growth: { hp: 85, attack: 6.5, physicalDef: 2.5, magicalDef: 2.5 },
   talent:
-    "战斗开始标记敌人与自身对称的一名角色,被标记的角色闪避·额外防御始终重置为0，直到分析者阵亡。", // v3.0,
+    "标记敌人与自身对称的1名角色，其闪避/额外防御归0直到分析者阵亡；之后每35s可分析另一名", // v3.0,
   skill: {
     id: "fxz_analyze",
     name: "分析",
     tags: ["增益"],
     cooldown: 6,
     castTime: 0,
-    description: "提升3名友方最低防御项6%防御力，可叠10次", // v3.16 用户: 5→6,
+    description:
+      "提升自身及2名随机友方最低一项防御6%，持续30s，最多叠10次并重置持续时间", // v3.16 用户: 5→6,
     scriptId: "fxz_analyze",
   },
 };
@@ -470,10 +480,10 @@ const fdzs: CharacterDef = {
     id: "fdzs_combo",
     name: "疾风连击",
     tags: [],
-    cooldown: 8,
-    castTime: 2,
-    description: "1.8s内6次快速攻击，每次攻击×80%且无视基础防御", // v3.16 用户: 90→80, 1.8s
-    damage: [{ type: DamageType.Physical, atkRatio: 0.8 }],
+    cooldown: 6,
+    castTime: 1.5,
+    description: "1.5s内5次快速攻击，每次攻击目标随机，攻击×65%且无视额外防御", // v3.4 用户直发
+    damage: [{ type: DamageType.Physical, atkRatio: 0.65 }],
     aoe: { maxTargets: 1 },
     scriptId: "fdzs_combo",
   },
@@ -491,16 +501,16 @@ const kzs: CharacterDef = {
     attackInterval: 2.0,
   },
   growth: { hp: 58, attack: 5.7, physicalDef: 1.6, magicalDef: 1.2 },
-  talent:
-    "自身每损失 12% 最大生命值,提升 4%+等级×0.08% 的攻击力,与6%伤害减免,最多叠加 5 层(即损失 60% 生命时达到最大)。",
+  talent: "每损失12%最大HP，提升3%+等级×0.05%攻与8%减伤，最多5层",
   skill: {
     id: "kzs_rage",
     name: "血怒",
     tags: ["增益"],
     cooldown: 10,
     castTime: 0,
-    description: "消耗10%当前HP→6s内攻速+60%，每次攻击附加目标当前HP×5%纯粹", // v3.16 用户: 40→60, // 审阅修复: 3→5%
-    effects: [{ type: StatusType.Bloodrage, duration: 6 }],
+    description:
+      "消耗10%当前HP进入嗜血: 7s内攻速+80%，每次攻击附加目标当前HP×5%纯粹", // v3.16 用户: 40→60, // 审阅修复: 3→5%
+    effects: [{ type: StatusType.Bloodrage, duration: 7 }],
   },
 };
 
@@ -517,14 +527,15 @@ const slzs: CharacterDef = {
   },
   growth: { hp: 90, attack: 7.5, physicalDef: 2, magicalDef: 3.5 },
   talent:
-    "每次受到魔法伤害有50%几率对施法者造成自身攻击力×60%+等级×0.25%的纯粹伤害,并使其[眩晕]1 s（100级：攻击力×85%）；有50%使那次魔法伤害-50%，并恢复自身周围随机1名友方角色剩余50%伤害的生命值。",
+    "每次受魔法伤害50%几率对施法者造成攻×60%+等级×0.25%纯粹并眩晕2s；50%使该次魔伤-50%并治疗随机1名友方",
   skill: {
     id: "slzs_guard",
     name: "守护",
     tags: ["增益"], // v3.0
     cooldown: 13,
     castTime: 0,
-    description: "消耗10%HP→守护7s：攻-30%、减伤+25%、同排友方魔伤转移自身",
+    description:
+      "消耗6%最大HP进入守护8s: 自身25%减伤、受疗+30%，我方全体友方受到魔法伤害75%几率转移至自身",
     scriptId: "slzs_guard",
   },
 };
@@ -541,14 +552,15 @@ const zqz: CharacterDef = {
     attackInterval: 4.5,
   },
   growth: { hp: 56, attack: 10.5, physicalDef: 2.5, magicalDef: 1.8 },
-  talent: "自身每普通攻击 4 次,下次攻击附带 50%吸血与持续 6 s 的[破甲]效果",
+  talent: "每普通攻击3次，下次攻击附带40%吸血与持续6s的[破甲]",
   skill: {
     id: "zqz_strike",
     name: "毁灭打击",
     tags: ["切入", "控制"], // v3.0
     cooldown: 10,
     castTime: 1,
-    description: "攻击×440%物理+自晕2s+目标晕2s", // v3.16 用户: 340→440
+    description:
+      "施法1s，对1名敌方造成攻击×440%物理并眩晕2s，发动后自身也眩晕2s", // v3.16 用户: 340→440
     damage: [{ type: DamageType.Physical, atkRatio: 4.4 }],
     effects: [{ type: StatusType.Stun, duration: 2 }],
     interruptOnAttack: true,
@@ -571,15 +583,16 @@ const xdds: CharacterDef = {
   },
   growth: { hp: 80, attack: 8.6, physicalDef: 1.8, magicalDef: 3 },
   talent:
-    "自身同排的所有友方角色每次发动技能提升自身 5%+等级×0.03%的攻击速度与4%技能吸血,持续 5 s(最大叠加 5 层)（100级：+8%攻击速度，4%技能吸血/层，满层：+40%攻击速度，20%技能吸血）",
+    "我方全体法师每次技能+1层秀逗: 每层3%+等级×0.03%攻速+3%技能吸血，7s，最多7层",
   skill: {
     id: "xdds_fire",
     name: "火球",
     tags: [],
     cooldown: 7,
     castTime: 1.5,
-    description: "攻击×230%魔法，每3次升级陨石(1排+攻击×300%+灼烧3s)", // v3.16 用户: 205/250→230/300, // v3.9: 215→205%
-    damage: [{ type: DamageType.Magical, atkRatio: 2.05 }],
+    description:
+      "对1名敌方造成攻击×220%魔法；每2次升级陨石轰炸(1排+攻击×290%+灼烧3s)，自身获得2层/4层秀逗", // v3.16 用户: 205/250→230/300, // v3.9: 215→205%
+    damage: [{ type: DamageType.Magical, atkRatio: 2.2 }],
     priority: [
       { row: Row.Front, chance: 40 },
       { row: Row.Mid, chance: 35 },
@@ -601,16 +614,15 @@ const sjsn: CharacterDef = {
     attackInterval: 4,
   },
   growth: { hp: 70, attack: 7, physicalDef: 1.5, magicalDef: 2.4 },
-  talent:
-    "与自身前·后·左·右各 1 格的友方法师角色技能冷却减少 15%+等级×0.05%(对自身无效)",
+  talent: "除自身外，友方法师技能冷却-10%，技能吸血+10%",
   skill: {
     id: "sjsn_freeze",
     name: "冰封",
     tags: ["控制"],
-    cooldown: 8,
+    cooldown: 7,
     castTime: 0,
-    description: "1名敌方束缚+缴械+每秒攻击×80%魔法，持续3s（无视30%魔防）", // v3.16 用户: 90→80+无视魔防,
-    damage: [{ type: DamageType.Magical, atkRatio: 0.9 }],
+    description: "使1名敌方束缚+缴械+每秒攻击×80%魔法，持续3s（无视40%魔防）", // v3.16 用户: 90→80+无视魔防,
+    damage: [{ type: DamageType.Magical, atkRatio: 0.8 }],
     effects: [
       { type: StatusType.Bind, duration: 3 },
       { type: StatusType.Disarm, duration: 3 },
@@ -631,17 +643,17 @@ const bmxz: CharacterDef = {
     attackInterval: 3,
   },
   growth: { hp: 80, attack: 8, physicalDef: 1.5, magicalDef: 2.8 },
-  talent:
-    "友方全场法师每次对敌方施加异常状态,会使自身技能减少 1 s 冷却时间，并提升基础攻击力的0.8%的攻击力，直到战斗结束。",
+  talent: "友方全场法师每次成功施加异常状态，自身技能减少1s冷却并恢复3%最大HP",
   skill: {
     id: "bmxz_charge",
     name: "蓄力",
     tags: [],
     cooldown: 9,
     castTime: 0,
-    description: "随机蓄力1/2/3s→前排/前中排/全场：攻击×200%魔法(命中5名-40%，每蓄力1s+20%)", // v3.16 用户,
-    damage: [{ type: DamageType.Magical, atkRatio: 1.9 }],
-    
+    description:
+      "随机蓄力1/2/3s→前排/前中排/全场冲击波: 攻击×200%魔法（命中5名-40%）", // v3.16 用户,
+    damage: [{ type: DamageType.Magical, atkRatio: 2.0 }],
+
     aoe: { maxTargets: 9 },
     scriptId: "bmxz_charge",
   },
@@ -659,16 +671,17 @@ const srm: CharacterDef = {
     attackInterval: 3.2,
   },
   growth: { hp: 74, attack: 6.5, physicalDef: 3.2, magicalDef: 2.8 },
-  talent: "友方阵亡→提升10%最大HP上限+恢复15%最大HP",
+  talent: "自身攻击获得10%吸血；每当友方阵亡，提升12%最大HP上限并恢复16%最大HP",
   skill: {
     id: "srm_fire",
     name: "火焰爆轰",
     tags: ["控制"],
     cooldown: 5,
     castTime: 0,
-    description: "消耗5%HP→攻击×180%魔法+眩晕0.5s(50%+等级×0.2%2次/100级70%)", // v3.16 用户: 165→180+几率重做, // v2.36: 160→165%
-    damage: [{ type: DamageType.Magical, atkRatio: 1.9 }], // P1: 按文档
-    effects: [{ type: StatusType.Stun, duration: 0.5 }],
+    description:
+      "消耗3%最大HP，对1敌造成攻击×160%+当前血量×3%魔法并眩晕1s；每2次发动变2倍/3倍效果", // v3.16 用户: 165→180+几率重做, // v2.36: 160→165%
+    damage: [{ type: DamageType.Magical, atkRatio: 1.6 }], // P1: 按文档
+    effects: [{ type: StatusType.Stun, duration: 1 }],
     scriptId: "srm_fire",
   },
 };
@@ -691,8 +704,8 @@ const ynfs: CharacterDef = {
     id: "ynfs_annihilate",
     name: "湮灭",
     tags: ["控制"],
-    cooldown: 10,
-    castTime: 2,
+    cooldown: 9,
+    castTime: 3.5,
     description: "2×2格子：目标总防御²/350纯粹+束缚4s",
     damage: [{ type: DamageType.Pure, defSquaredDiv: 350 }],
     aoe: { maxTargets: 4 },
@@ -713,15 +726,16 @@ const syz: CharacterDef = {
   },
   growth: { hp: 70, attack: 8, physicalDef: 2.5, magicalDef: 3 },
   talent:
-    "自身每次攻击对我方随机 1 名友方角色提供攻击力×60%的治疗效果（80%几率对我方最低血量单位发动）自身阵亡时，为我方全场法师角色提供每秒攻击力×80%的治疗与20%伤害减免，持续6s（每秒后治疗效果、伤害减免+10%）",
+    "每次攻击治疗我方随机1名友方攻×70%(80%几率最低血单位)；阵亡后全场法师10%减伤+每4s全体治疗(前10s 2倍)",
   skill: {
     id: "syz_bless",
     name: "神之庇佑",
     tags: ["增益"], // v3.0
-    cooldown: 10, // 审阅修复: 12→10 (文档)
+    cooldown: 9, // 审阅修复: 12→10 (文档)
     castTime: 0,
-    description: "2名最低血量友方：减伤20%+延迟5s结算+驱散，持续5s",
-    effects: [{ type: StatusType.Inspire, duration: 5, value: 0.8 }], // 审阅修复: 7→5
+    description:
+      "我方最低血量2名友方: 受到治疗+25%、减伤20%+延迟5s结算，持续6s",
+    effects: [{ type: StatusType.Inspire, duration: 6, value: 0.8 }], // 审阅修复: 7→5
     scriptId: "syz_bless",
   },
 };
@@ -746,11 +760,11 @@ const wqqs: CharacterDef = {
     id: "wqqs_move",
     name: "亡魂突袭",
     tags: ["移动"],
-    cooldown: 7,
+    cooldown: 8,
     castTime: 0,
-    description: "随机移动→对1名敌人造成攻击×100%纯粹+周围格子诅咒3s",
-    damage: [{ type: DamageType.Pure, atkRatio: 1.0 }],
-    effects: [{ type: StatusType.Curse, duration: 3 }],
+    description: "随机移动后对1名敌人造成攻击×110%纯粹，并使其受到诅咒5s",
+    damage: [{ type: DamageType.Pure, atkRatio: 1.1 }],
+    effects: [{ type: StatusType.Curse, duration: 5 }],
   },
 };
 
@@ -774,12 +788,11 @@ const kldd: CharacterDef = {
     tags: ["控制"], // v3.0
     cooldown: 7,
     castTime: 0,
-    description: "攻击×190%魔法+眩晕1s；4s后追加100%纯粹",
-    damage: [
-      { type: DamageType.Magical, atkRatio: 1.9 },
-      { type: DamageType.Pure, atkRatio: 1.0 },
-    ],
-    effects: [{ type: StatusType.Stun, duration: 1 }],
+    description:
+      "对1敌造成攻击×150%魔法并眩晕1.5s；4s后追加攻击×75%纯粹，自身恢复25%攻击血量",
+    // v3.3: 75%纯粹由 battle.ts 的 4s 延迟结算，此处不再重复立即结算
+    damage: [{ type: DamageType.Magical, atkRatio: 1.5 }],
+    effects: [{ type: StatusType.Stun, duration: 1.5 }],
   },
 };
 
@@ -825,10 +838,10 @@ const yammxz: CharacterDef = {
     id: "yammxz_swap",
     name: "暗影换位",
     tags: ["移动"],
-    cooldown: 7,
+    cooldown: 8,
     castTime: 0,
-    description: "与友方换位→对称2名敌人沉默4s+攻击×135%纯粹",
-    damage: [{ type: DamageType.Pure, atkRatio: 1.35 }],
+    description: "与友方换位后，使2名随机敌人沉默4s，并造成攻击×120%纯粹伤害",
+    damage: [{ type: DamageType.Pure, atkRatio: 1.2 }],
     scriptId: "yammxz_swap",
     effects: [{ type: StatusType.Silence, duration: 4 }],
   },
@@ -852,10 +865,11 @@ const dyq: CharacterDef = {
     id: "dyq_dash",
     name: "冲刺",
     tags: ["移动"],
-    cooldown: 7,
+    cooldown: 5,
     castTime: 0,
-    description: "同列竖排全体攻击×170%魔法+30%灼烧4s（命中3人-30%）",
-    damage: [{ type: DamageType.Magical, atkRatio: 1.7 }],
+    description:
+      "对同列竖排全体造成攻击×130%魔法，30%几率诅咒4s（命中3人-30%）",
+    damage: [{ type: DamageType.Magical, atkRatio: 1.3 }],
     effects: [{ type: StatusType.Burn, duration: 4, value: 0.05, chance: 0.3 }],
     aoe: { maxTargets: 3 },
   },
@@ -883,8 +897,8 @@ const hlyl: CharacterDef = {
     tags: [],
     cooldown: 7,
     castTime: 1,
-    description: "前排最低血：每秒攻击×50%魔法，持续6s",
-    damage: [{ type: DamageType.Magical, atkRatio: 0.5 }],
+    description: "对1名敌人造成每秒攻击×35%魔法伤害，持续7s",
+    damage: [{ type: DamageType.Magical, atkRatio: 0.35 }],
     aoe: { maxTargets: 1 },
     scriptId: "hlyl_fire",
   },
@@ -908,10 +922,11 @@ const bsxl: CharacterDef = {
     id: "bsxl_freeze",
     name: "冰霜吐息",
     tags: ["控制"],
-    cooldown: 9,
+    cooldown: 10,
     castTime: 1,
-    description: "后排全部：降20%攻速+每秒攻击×80%魔法3s；每3次→冰冻",
-    damage: [{ type: DamageType.Magical, atkRatio: 0.8 }],
+    description:
+      "随机1排敌人: 降40%攻速+每秒攻击×60%魔法伤害4s；每2次发动，下次降攻速变为[冰冻]",
+    damage: [{ type: DamageType.Magical, atkRatio: 0.6 }],
     aoe: { maxTargets: 3 },
     scriptId: "bsxl_freeze",
   },
@@ -935,10 +950,10 @@ const xyfl: CharacterDef = {
     id: "xyfl_chaos",
     name: "乱序打击",
     tags: ["控制"],
-    cooldown: 8,
+    cooldown: 9,
     castTime: 1,
-    description: "随机2排全体：攻击×260%物理+60%打乱位置(命中5人-30%)", // v3.15g: 220→260（对齐 handler）
-    damage: [{ type: DamageType.Physical, atkRatio: 1.9 }],
+    description: "随机4名敌人受到攻击×240%物理，并随机打乱它们之间的位置", // v3.15g: 220→260（对齐 handler）
+    damage: [{ type: DamageType.Physical, atkRatio: 2.4 }],
     aoe: { maxTargets: 6 },
     scriptId: "xyfl_chaos",
   },
@@ -964,8 +979,9 @@ const hbfl: CharacterDef = {
     tags: ["治疗"],
     cooldown: 10,
     castTime: 1,
-    description: "冰封<75%HP龙族4s（免疫物理），每秒攻击×60%+最大HP×6%", // P1修复: 按文档60%/6%
-    heal: { atkRatio: 0.6, targetMaxHpRatio: 0.06 },
+    description:
+      "冰封<75%HP龙族4s（免疫物理，被冰封无法行动），每秒提供攻击×70%+最大HP×3%治疗", // P1修复: 按文档60%/6%
+    heal: { atkRatio: 0.7, targetMaxHpRatio: 0.06 },
   },
 };
 
@@ -989,10 +1005,10 @@ const bjl: CharacterDef = {
     tags: ["切入"],
     cooldown: 9,
     castTime: 0,
-    description: "中后排各1名：第1个210%物伤+30%降攻速4s，第2个260%物伤", // v3.15c: 180/230→210/260
+    description: "中后排各1名: 第1个200%物伤+30%降攻速4s，第2个240%物伤", // v3.15c: 180/230→210/260
     damage: [
-      { type: DamageType.Physical, atkRatio: 1.8 },
-      { type: DamageType.Physical, atkRatio: 2.3 },
+      { type: DamageType.Physical, atkRatio: 2.0 },
+      { type: DamageType.Physical, atkRatio: 2.4 },
     ],
     aoe: { maxTargets: 2 },
     scriptId: "bjl_wing",
@@ -1013,14 +1029,14 @@ const zs: CharacterDef = {
     attackInterval: 3.5,
   },
   growth: { hp: 80, attack: 8.5, physicalDef: 2, magicalDef: 2.5 },
-  talent: "自身攻击·技能各有35%/50%几率附加目标当前生命值×8%的魔法伤害",
+  talent: "自身攻击/技能各有35%/75%几率附加目标当前HP×8%的魔法伤害",
   skill: {
     id: "zs_storm",
     name: "神之怒雷",
     tags: [],
-    cooldown: 11,
+    cooldown: 10,
     castTime: 2,
-    description: "全屏攻击×150-180%魔法", // v2.35 宙斯 1.65→1.7
+    description: "全屏攻击×160-180%魔法", // v2.35 宙斯 1.65→1.7
     damage: [{ type: DamageType.Magical, atkRatio: 1.7 }],
     aoe: { maxTargets: 9 },
     interruptOnAttack: true,
@@ -1040,14 +1056,15 @@ const xjl: CharacterDef = {
   },
   growth: { hp: 75, attack: 7, physicalDef: 3, magicalDef: 2.5 },
   talent:
-    "我方全场单位每次发动技能对敌方造成伤害，自身恢复最大生命值×1.5%的血量（每3s最多通过该天赋恢复最大生命值×6%的血量）",
+    "每秒恢复1%最大HP；我方全场每次技能对敌造成伤害，自身恢复1%最大HP（每2s最多5%）",
   skill: {
     id: "xjl_link",
     name: "链接",
     tags: [],
     cooldown: 9,
     castTime: 0,
-    description: "链接1名友方8s：+30%技能增强+20%技能吸血，自身承担25%伤害",
+    description:
+      "链接1名友方8s: +30%技能增强+双方天赋20%效果，自身代替友方承担25%伤害",
     scriptId: "xjl_link",
   },
 };
@@ -1057,23 +1074,23 @@ const swxz: CharacterDef = {
   name: "死亡先知",
   race: Race.Undead,
   stats: {
-    hp: 10850,
+    hp: 9365, // v3.3 成长-15%: 950+85×99
     attack: 797.5,
     physicalDef: 329,
     magicalDef: 358.8,
     attackInterval: 3.6,
   },
-  growth: { hp: 100, attack: 7.5, physicalDef: 3, magicalDef: 3.2 },
+  growth: { hp: 85, attack: 7.5, physicalDef: 3, magicalDef: 3.2 }, // v3.3 100→85
   talent:
-    "自身每累积造成700伤害，获得3.5%伤害减免直到战斗结束（最大叠加10层） （计算实际造成的伤害）", // v3.0,
+    "自身每累积造成800伤害，获得3%伤害减免直到战斗结束（最多10层，计算实际伤害）", // v3.0,
   skill: {
     id: "swxz_drain",
     name: "吸魂巫术",
     tags: [],
-    cooldown: 8,
+    cooldown: 7,
     castTime: 0,
     description:
-      "吸取单位6s：每秒攻击×9%+最大HP×2%魔法，自身吸血25%。优先前排(70/15/15)。结束后诅咒4s",
+      "吸取1单位10s: 每秒造成自身攻击×6%+目标最大HP×1%魔法，自身获得15%技能吸血。优先前排(70/15/15)",
     scriptId: "swxz_drain",
     priority: [
       { row: Row.Front, chance: 70 },
@@ -1101,14 +1118,15 @@ const xcl: CharacterDef = {
     id: "xcl_star",
     name: "星辰冲击",
     tags: ["控制"],
-    cooldown: 10,
+    cooldown: 11,
     castTime: 2,
-    description: "2×2随机格子：攻击×180%魔法+20%沉默/20%缴械3s",
-    damage: [{ type: DamageType.Magical, atkRatio: 1.8 }],
+    description:
+      "2×2随机格子上的敌人受到攻击×170%魔法，并各有20%沉默/20%缴械3s",
+    damage: [{ type: DamageType.Magical, atkRatio: 1.7 }],
     aoe: { maxTargets: 4 },
     effects: [
-      { type: StatusType.Silence, duration: 3 },
-      { type: StatusType.Disarm, duration: 3 },
+      { type: StatusType.Silence, duration: 3, chance: 0.2 },
+      { type: StatusType.Disarm, duration: 3, chance: 0.2 },
     ],
   },
 };
@@ -1125,15 +1143,15 @@ const dl: CharacterDef = {
     attackInterval: 3.3,
   },
   growth: { hp: 70, attack: 8, physicalDef: 2.5, magicalDef: 2 },
-  talent:
-    "（粗暴龙皮）自身受到普通攻击，随机发动 1 个效果：❶攻击者受到自身攻击×10%的纯粹伤害；❷使自身受到的那次伤害-40%", // v3.0 重写,
+  talent: "粗暴龙皮: 受到普攻随机发动①攻击者受自身攻击×12%纯粹 ②该次伤害-30%", // v3.0 重写,
   skill: {
     id: "dl_stomp",
     name: "龙踏",
     tags: ["控制"],
-    cooldown: 10,
+    cooldown: 11,
     castTime: 2,
-    description: "全屏攻击×150%物理（前排140%/中排110%/后排80%）+降命中20%5s", // v3.8: 145→150%
+    description:
+      "敌方全体攻击×150%物理（前排130%/中排100%/后排70%），并降低20%命中率5s", // v3.8: 145→150%
     damage: [{ type: DamageType.Physical, atkRatio: 1.5 }],
     aoe: { maxTargets: 9 },
     scriptId: "dl_stomp",
@@ -1161,13 +1179,11 @@ const lyz: CharacterDef = {
     cooldown: 10,
     castTime: 2,
     description:
-      "最低HP龙族：每秒攻击×40%+20%减伤4s；4次后升级双目标70%+30%减伤；龙族阵亡时随机复活1只5s",
+      "治疗最低HP龙族: 每秒攻击×40%+20%减伤4s；每4次后下次升级，若有阵亡龙族随机复活1只并无敌5s",
     heal: { atkRatio: 0.4 },
     scriptId: "lyz_heal",
   },
 };
-
-
 
 const xblr: CharacterDef = {
   id: "xblr",
@@ -1182,14 +1198,14 @@ const xblr: CharacterDef = {
   },
   growth: { hp: 78, attack: 10, physicalDef: 2.3, magicalDef: 2.2 },
   talent:
-    "每当我方场上其他猎人角色进行普通攻击，自身有 10%几率额外发起 1 次攻击，这次攻击暴击率+30%（冷却：3 s）", // v3.0 重做,
+    "我方全体猎人每次攻击，自身额外对该目标进行一次10%伤害的攻击，该攻击暴击率+35%", // v3.0 重做,
   skill: {
     id: "xblr_shot",
     name: "跳跃射击",
     tags: ["移动"],
     cooldown: 8,
     castTime: 0,
-    description: "跳至空位→1-3名敌人各3发：80%/90%/110%+第3发必暴击", // v3.16 用户: 120→110,
+    description: "跳至空位后，对2名敌人各3发攻击：90%/100%/120%，第3发必暴击", // v3.16 用户: 120→110,
     damage: [{ type: DamageType.Physical, atkRatio: 0.97 }],
     aoe: { maxTargets: 3 },
     scriptId: "xblr_shot",
@@ -1208,15 +1224,15 @@ const ldshz: CharacterDef = {
     attackInterval: 3.5,
   },
   growth: { hp: 90, attack: 7, physicalDef: 3.2, magicalDef: 3 },
-  talent:
-    "（自然护盾）自身受到技能伤害时，有 40%+等级×0.1% 几率获得一个护盾，护盾值为自身攻击力×600%，持续 4 秒（冷却 5 秒）。护盾破碎时，使我方场上所有平分护盾值的恢复效果。",
+  talent: "自身HP>90%时受伤-60%，HP>40%时受伤-30%",
   skill: {
     id: "ldshz_buff",
     name: "自然守护",
     tags: ["增益"],
-    cooldown: 12,
+    cooldown: 8,
     castTime: 0,
-    description: "全队+20%双防+同排后排友方+20%暴击+35%吸血6s", // v3.16 用户: 30→35,
+    description:
+      "使自身及随机2名友方获得护盾(自身攻×600%)6s；护盾破碎时我方全场获得30%护盾值治疗", // v3.16 用户: 30→35,
     scriptId: "ldshz_buff",
   },
 };
@@ -1234,14 +1250,14 @@ const jdds: CharacterDef = {
   },
   growth: { hp: 75, attack: 7.5, physicalDef: 2.5, magicalDef: 1.8 },
   talent:
-    "自身每次击杀敌方单位受到自身当前攻击×20%的反冲伤害，那之后提升5%+等级×0.02%攻击力（100级：+7%攻击力）与3%防御力，直到战斗结束。", // v3.0,
+    "我方全体战士每次击杀，自身受当前攻×10%反冲，之后+3%+等级×0.02%攻与5%防直到战斗结束", // v3.0,
   skill: {
     id: "jdds_steal",
     name: "战力夺舍",
     tags: [],
     cooldown: 6,
     castTime: 0,
-    description: "夺取敌方攻最高角色30%攻击力5s", // v3.16 用户: 20→30,
+    description: "夺取敌方攻最高角色20%攻击力5s", // v3.16 用户: 20→30,
     scriptId: "jdds_steal",
   },
 };
@@ -1266,13 +1282,12 @@ const wlgyz: CharacterDef = {
     id: "wlgyz_heal",
     name: "死亡颂歌",
     tags: ["治疗", "减益"],
-    cooldown: 9,
-    castTime: 1.5,
-    description: "恢复随机2名友方攻击×200%生命+诅咒随机1名敌方3s",
-    heal: { atkRatio: 2.0 },
+    cooldown: 8,
+    castTime: 2,
+    description: "施法2s，恢复随机2名友方攻击×160%生命，并诅咒随机1名敌方5s",
+    heal: { atkRatio: 1.6 },
     aoe: { maxTargets: 2 },
-    effects: [{ type: StatusType.Curse, duration: 3 }],
-    
+    effects: [{ type: StatusType.Curse, duration: 5 }],
   },
 };
 
@@ -1288,15 +1303,15 @@ const mrsz: CharacterDef = {
     attackInterval: 3.5,
   },
   growth: { hp: 66, attack: 9.9, physicalDef: 1.6, magicalDef: 2.4 },
-  talent: "攻击处于异常状态的敌人获得15%吸血效果，复活后该天赋+100%",
+  talent: "攻击异常状态敌人造成伤害+10%，获得20%吸血，复活后效果2倍",
   skill: {
     id: "mrsz_doom",
     name: "末日",
     tags: ["控制"],
-    cooldown: 13,
+    cooldown: 14,
     castTime: 0,
     description:
-      "消耗6%HP→锁定近10s伤害最高目标：减疗75%+每秒13%atk纯粹+沉默+破坏，11s（HP<20%不可用）",
+      "消耗6%最大HP，锁定近10s伤害最高目标: 受疗-75%、每秒13%×攻击纯粹、[沉默]+[破坏]8s（HP<15%不可用）",
     scriptId: "mrsz_doom",
   },
 };
@@ -1314,20 +1329,18 @@ const hyz: CharacterDef = {
   },
   growth: { hp: 60, attack: 6, physicalDef: 1.8, magicalDef: 3.5 },
   talent:
-    "每经过 4 s 或者每当我方角色对敌方施加负面状态(每次施加动作仅增加 1 层,无论目标数量),自身都会获得 1 层 [魂能] 层数,最多叠加 5 层。每层 [魂能] 使自身攻击力·防御力提升 8%；复活后,立即获得 5 层 [魂能]。",
+    "每4s或每当我方对敌施加负面状态(每次动作1层)获得1层魂能，最多5层；每层攻+5%防+10%；复活后立即获得5层",
   skill: {
     id: "hyz_shield",
     name: "魂能护盾",
     tags: ["移动", "增益"], // v3.0
-    cooldown: 11,
+    cooldown: 13,
     castTime: 0,
     description:
-      "消耗全部魂能→瞬移最低HP亡灵旁+护盾(攻击×90%×层数)+驱散周围1格",
+      "消耗全部魂能，瞬移至1个空位；使随机1名友方驱散全部负面，自身与目标获得护盾(攻击×80%×层数)",
     scriptId: "hyz_shield",
   },
 };
-
-
 
 const fz: CharacterDef = {
   id: "fz",
@@ -1341,15 +1354,16 @@ const fz: CharacterDef = {
     attackInterval: 3.6,
   },
   growth: { hp: 80, attack: 5.6, physicalDef: 2, magicalDef: 0.8 },
-  talent: "（符咒）自身每次攻击，随机发动1个符咒效果：❶伤害变纯粹；❷额外对目标周围随机1名敌人造成30%次级伤害(无视70%防御)；❸叠加1层符咒印记(直到阵亡或目标移动/阵亡)",
+  talent:
+    "每次攻击随机2选1: ①伤害降低20%变纯粹 ②对目标叠1层符咒印记(直到自身阵亡或目标移动/阵亡)",
   skill: {
     id: "fz_curse",
     name: "符咒",
     tags: [],
     cooldown: 5,
     castTime: 1,
-    description: "对1名敌人造成攻击×85%魔法伤害，目标每层符咒印记+10%伤害", // v3.15g: 95→85
-    damage: [{ type: DamageType.Magical, atkRatio: 0.85 }],
+    description: "对1名敌人造成攻击×80%魔法伤害，目标每层符咒印记+8%伤害", // v3.15g: 95→85
+    damage: [{ type: DamageType.Magical, atkRatio: 0.8 }],
     scriptId: "fz_curse",
   },
 };
@@ -1366,14 +1380,14 @@ const qm: CharacterDef = {
     attackInterval: 3.5,
   },
   growth: { hp: 75, attack: 6.5, physicalDef: 1.5, magicalDef: 3.5 },
-  talent: "（驱魔）自身受到异常状态会立即解除，并提升10%攻击力与20%防御力，持续9s（最大叠加4层）",
+  talent: "受到异常状态后提升6%攻与20%防，持续12s（最多5层）",
   skill: {
     id: "qm_exorcise",
     name: "驱魔",
     tags: ["范围"],
     cooldown: 8,
     castTime: 1,
-    description: "敌方随机2×2范围：攻击×105%魔法伤害，目标有增益状态→伤害变纯粹", // v3.15g: 115→105
+    description: "敌方随机2×2范围: 攻击×105%魔法，目标有增益状态→伤害变纯粹", // v3.15g: 115→105
     damage: [{ type: DamageType.Magical, atkRatio: 1.05 }],
     aoe: { maxTargets: 4 },
     scriptId: "qm_exorcise",
@@ -1392,15 +1406,16 @@ const sq: CharacterDef = {
     attackInterval: 3.6,
   },
   growth: { hp: 90, attack: 5, physicalDef: 4, magicalDef: 4 },
-  talent: "自身不会陷入[沉默]/[破坏]状态",
+  talent: "自身不会陷入[沉默]/[破坏]/[缴械]/[诅咒]状态",
   skill: {
     id: "sq_heal",
     name: "圣光治愈",
     tags: ["治疗"],
-    cooldown: 11,
+    cooldown: 12,
     castTime: 0,
-    description: "我方2名圣职者恢复攻击×115%生命；有负面→驱散+治疗+30%；随后圣之护盾(魔伤-30%+对来源眩晕1s+100%纯粹反伤)8s", // v3.15g: 125→115 // v3.5: 200→240%
-    heal: { fixedAdd: 0, atkRatio: 2.4 },
+    description:
+      "我方2名圣职者恢复攻击×120%生命；有负面则驱散并+30%治疗；圣之护盾(魔伤-30%，反弹10%原本伤害为纯粹)7s", // v3.15g: 125→115 // v3.5: 200→240%
+    heal: { fixedAdd: 0, atkRatio: 1.2 },
     scriptId: "sq_heal",
   },
 };
@@ -1417,14 +1432,16 @@ const qd: CharacterDef = {
     attackInterval: 3.6,
   },
   growth: { hp: 60, attack: 7.5, physicalDef: 2, magicalDef: 1 },
-  talent: "我方场上所有角色每次发动需要施法技能，施法成功后对敌方随机1名造成攻击×8%纯粹伤害",
+  talent:
+    "我方所有角色每次技能后，对敌方随机1名造成攻击×3%纯粹，并治疗我方随机1名攻击×3%",
   skill: {
     id: "qd_pray",
     name: "祈祷",
     tags: ["治疗", "增益"], // v3.0 用户指定
-    cooldown: 8,
-    castTime: 2,
-    description: "随机祈祷效果：大成功(无敌+回2%/s×5s)/成功(减伤40%+回1%/s×5s)/一般(减伤20%×5s)/失败(自损10%最大HP)",
+    cooldown: 9,
+    castTime: 3,
+    description:
+      "施法3s后随机祈祷: 大成功(自身无敌+每秒2%最大HP×5s)/成功(自身减伤40%+每秒1%×5s)/一般(自身减伤20%×5s)/失败(自损10%最大HP)",
     scriptId: "qd_pray",
   },
 };
@@ -1446,10 +1463,10 @@ const sqz: CharacterDef = {
     id: "sqz_combo",
     name: "圣拳连击",
     tags: ["切入"],
-    cooldown: 6,
+    cooldown: 5,
     castTime: 0,
-    description: "对敌方后排1名造成3次攻击，每次攻击×95%（后排无人→中前排）", // v3.5: 80→95%
-    damage: [{ type: DamageType.Physical, atkRatio: 0.95 }],
+    description: "对敌方后排1名造成3次攻击，每次攻击×70%（后排无人→中前排）", // v3.5: 80→95%
+    damage: [{ type: DamageType.Physical, atkRatio: 0.7 }],
     aoe: { maxTargets: 1 },
     scriptId: "sqz_combo",
   },
@@ -1472,10 +1489,10 @@ const zq: CharacterDef = {
     id: "zq_flame",
     name: "朱雀焚天",
     tags: [],
-    cooldown: 10,
+    cooldown: 8,
     castTime: 2,
-    description: "对敌方随机1排造成攻击×135%魔法伤害+灼烧4s", // v3.15g: 150→135
-    damage: [{ type: DamageType.Magical, atkRatio: 1.35 }],
+    description: "对敌方随机1排造成攻击×180%魔法伤害，并灼烧4s", // v3.15g: 150→135
+    damage: [{ type: DamageType.Magical, atkRatio: 1.8 }],
     scriptId: "zq_flame",
   },
 };
@@ -1492,14 +1509,15 @@ const sc: CharacterDef = {
     attackInterval: 3.5,
   },
   growth: { hp: 90, attack: 6.4, physicalDef: 3.6, magicalDef: 2.4 },
-  talent: "敌方场上每存在1名拥有增益状态的单位，自身获得5%伤害减免",
+  talent: "敌方场上每存在1名拥有增益状态的单位，自身获得6%伤害减免",
   skill: {
     id: "sc_judge",
     name: "审判之光",
     tags: [],
-    cooldown: 9,
+    cooldown: 11,
     castTime: 2,
-    description: "对9s内伤害最高敌人：沉默+攻击×30%纯粹DoT×5s；目标有增益→用目标攻击力计算；结束清除其全部增益",
+    description:
+      "对最近9s累计伤害最高敌人: 沉默+每秒自身攻击×35%纯粹持续4s；目标有增益则用目标攻击力计算，效果结束后清除其全部增益",
     scriptId: "sc_judge",
   },
 };
@@ -1510,20 +1528,22 @@ const xd: CharacterDef = {
   race: Race.Holy,
   stats: {
     hp: 7520, // v3.7 ×1.15
-    attack: 1246.4, // v3.10 ×1.12 // v3.9 ×0.85 // v3.8 ×0.9 // v3.7 ×1.1 // v3.6: ×1.15 // v3.5: 圣职者加强
+    attack: 1147.4, // v3.3 成长 8→7: 454.4+7×99 // v3.10 ×1.12 // v3.9 ×0.85 // v3.8 ×0.9 // v3.7 ×1.1 // v3.6: ×1.15 // v3.5: 圣职者加强
     physicalDef: 168.5,
     magicalDef: 252.8, // v3.7 ×1.5
     attackInterval: 3,
   },
-  growth: { hp: 60, attack: 8.0, physicalDef: 1.5, magicalDef: 1.5 },
-  talent: "阵亡时：敌方全体受自身攻击×150%纯粹伤害；我方全体恢复最大生命×30%；我方全体祝福(+10%伤-10%受)30s", // P2,
+  growth: { hp: 60, attack: 7.0, physicalDef: 1.5, magicalDef: 1.5 }, // v3.3 8.0→7.0
+  talent:
+    "每当友方角色阵亡，给予敌方全体自身攻击×30%纯粹，我方剩余单位恢复最大生命×5%", // P2,
   skill: {
     id: "xd_sacrifice",
     name: "牺牲",
     tags: ["嘲讽"],
-    cooldown: 12,
+    cooldown: 8,
     castTime: 0,
-    description: "牺牲25%当前生命，嘲讽敌方前·中排随机2名：6s内单体技能·攻击只能对殉道者发动",
+    description:
+      "使敌方随机1名造成伤害-20%，每秒受到目标自身防御总和×20%纯粹，持续4s；自身阵亡后仍可发动，冷却+100%且无降伤效果，只造成25%伤害",
     scriptId: "xd_sacrifice",
   },
 };
@@ -1587,6 +1607,12 @@ export const ALL_CHARACTERS: CharacterDef[] = [
   xd,
 ];
 
+/**
+ * v3.3: 召唤物不进入可部署角色池（TeamSetup/DataEditor），但必须能被
+ * CHARACTER_MAP 查到，否则骷髅大帝的召唤天赋会静默空转。
+ */
+export const SUMMON_CHARACTERS: CharacterDef[] = [klb];
+
 export const CHARACTER_MAP = buildCharacterMap();
 
 function buildCharacterMap(): Map<string, CharacterDef> {
@@ -1596,7 +1622,7 @@ function buildCharacterMap(): Map<string, CharacterDef> {
     if (raw) overrides = JSON.parse(raw);
   } catch {}
   return new Map(
-    ALL_CHARACTERS.map((c) => {
+    [...ALL_CHARACTERS, ...SUMMON_CHARACTERS].map((c) => {
       const ov = overrides[c.id];
       if (!ov) return [c.id, c];
       return [

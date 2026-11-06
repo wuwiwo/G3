@@ -142,6 +142,9 @@ export interface ArenaUnit {
   currentAttack: number;
   currentPhysicalDef: number;
   currentMagicalDef: number;
+  // v3.4 R4: 基础防御（角色面板值），额外防御 = current - base
+  basePhysicalDef?: number;
+  baseMagicalDef?: number;
   cooldownRemaining: number;
   castTimer: number;
   isCasting: boolean;
@@ -154,7 +157,15 @@ export interface ArenaUnit {
   lastHitTarget?: string;
   lastHitBy?: string;
   hasRevived?: boolean;
-  reviving?: { timer: number; hpPct: number; invTimer?: number; regenPct?: number; regenDur?: number };
+  reviving?: {
+    timer: number;
+    hpPct: number;
+    invTimer?: number;
+    regenPct?: number;
+    regenDur?: number;
+    decayDelay?: number;
+    decayPct?: number;
+  };
   invincibleTimer?: number;
   // Summon system
   summonerId?: string;
@@ -174,11 +185,22 @@ export interface ArenaUnit {
   // Runtime engine flags
   _wasHitDuringCast?: boolean;
   _wasDamagedDuringCast?: boolean;
-  _statusSnapshot?: { type: string; remainingSeconds: number; stacks: number; value?: number }[];
+  _statusSnapshot?: {
+    type: string;
+    remainingSeconds: number;
+    stacks: number;
+    value?: number;
+  }[];
   _hitSnapshot?: boolean;
   _dmgSnapshot?: boolean;
   _mageAtkMult?: number;
   _mageAtkExpire?: number;
+  /** v3.3 法师羁绊每层独立计时: [{每层攻击加成, 到期时间}] */
+  _mageAtkLayers?: { value: number; expire: number }[];
+  /** v3.3 猎人羁绊被切入后叠层，最多 3 层，每层独立计时 */
+  _hunterBondLayers?: { value: number; expire: number }[];
+  /** v3.3 亡灵复活后延迟持续失血 */
+  _undeadDecay?: { startAt: number; pct: number; acc: number };
   physDamageReduction?: number;
   aoeDamageReduction?: number;
   _hlRoarAtk?: number;
@@ -245,7 +267,7 @@ export interface ArenaUnit {
   _bslrAtkDown?: number;
   _bslrSlowDown?: number;
   _bslrDebuffUntil?: number;
-  _atkBuffUntil?: number;   // v2.11 攻击增益窗口结束 (鼓舞)
+  _atkBuffUntil?: number; // v2.11 攻击增益窗口结束 (鼓舞)
   _atkBuffPct?: number;
   _zzxDrPhys?: number;
   _zzxDrMag?: number;
@@ -281,7 +303,7 @@ export interface ArenaUnit {
   _warriorAtkMult?: number;
   _warriorDefMult?: number;
   _warriorMagMult?: number;
-  _frenzy?: boolean;
+  _frenzy?: number; // v3.3: 0/未触发, 1=90s 一阶段, 2=120s 二阶段
   _zfyxAtkStacks?: number;
   _cutinDmgRed?: number;
   _antiHealMult?: number;
@@ -310,9 +332,9 @@ export interface ArenaUnit {
   _scDr?: number;
   _syzHealBoostUntil?: number;
   _warriorDr?: number;
-  _swapEvaApplied?: boolean;     // v2.11 攻击增益倍率 (鼓舞 0.35)
-  _buffWinPhys?: number;    // v2.11 增益窗口内普攻伤害累计
-  _buffWinSkill?: number;   // v2.11 增益窗口内技能伤害累计
+  _swapEvaApplied?: boolean; // v2.11 攻击增益倍率 (鼓舞 0.35)
+  _buffWinPhys?: number; // v2.11 增益窗口内普攻伤害累计
+  _buffWinSkill?: number; // v2.11 增益窗口内技能伤害累计
   _immuneAbnormal?: boolean;
   _immuneTimer?: number;
   _syzDeathTrigger?: boolean;
@@ -346,7 +368,7 @@ export interface BattleState {
   units: ArenaUnit[];
   time: number;
   phase: "setup" | "fighting" | "finished";
-  winner?: "ally" | "enemy";
+  winner?: "ally" | "enemy" | "draw"; // v3.3: 180s 超时判平局而不是失败
   turnEvents: BattleEvent[];
   battleLog: BattleLogEntry[];
   stats?: any[];

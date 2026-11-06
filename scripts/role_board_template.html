@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>G3 角色细颗粒度看板</title>
+    <style>
+      :root {
+        --bg: #f7f8fa;
+        --card: #ffffff;
+        --line: #e3e6ec;
+        --text: #1f2430;
+        --muted: #6b7280;
+        --accent: #2563eb;
+        --red: #d92d20;
+        --redbg: #fef3f2;
+        --blue: #1570ef;
+        --bluebg: #eff8ff;
+        --head: #f1f3f7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          13px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          "Microsoft YaHei",
+          sans-serif;
+      }
+      .wrap {
+        max-width: 1600px;
+        margin: 0 auto;
+        padding: 20px 22px 48px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+        font-weight: 650;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 16px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+      .toolbar label {
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      select,
+      input[type="search"],
+      button {
+        font: inherit;
+        color: var(--text);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 5px 9px;
+        outline: none;
+      }
+      select:focus,
+      input:focus {
+        border-color: var(--accent);
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover {
+        background: #f3f6fc;
+      }
+      .seg {
+        display: inline-flex;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .seg button {
+        border: 0;
+        border-radius: 0;
+        border-right: 1px solid var(--line);
+        padding: 5px 12px;
+        background: #fff;
+      }
+      .seg button:last-child {
+        border-right: 0;
+      }
+      .seg button.on {
+        background: var(--accent);
+        color: #fff;
+      }
+      .count {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .note {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+      .note b {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .scroll {
+        overflow: auto;
+        max-height: 70vh;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+      table {
+        border-collapse: separate;
+        border-spacing: 0;
+        width: 100%;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        padding: 7px 10px;
+        text-align: right;
+        white-space: nowrap;
+        border-bottom: 1px solid #eef0f4;
+      }
+      th {
+        position: sticky;
+        top: 0;
+        background: var(--head);
+        z-index: 2;
+        font-weight: 600;
+        cursor: pointer;
+        user-select: none;
+        color: #394150;
+      }
+      th:hover {
+        background: #e8ecf4;
+      }
+      th.txt,
+      td.txt {
+        text-align: left;
+      }
+      td.num {
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 12px;
+      }
+      tbody tr:nth-child(even) {
+        background: #fafbfd;
+      }
+      tbody tr:hover {
+        background: #f0f5ff;
+      }
+      .badge {
+        display: inline-block;
+        padding: 1px 7px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .b-over {
+        color: var(--red);
+        background: var(--redbg);
+      }
+      .b-under {
+        color: var(--blue);
+        background: var(--bluebg);
+      }
+      .b-ok {
+        color: var(--muted);
+        background: #f2f4f7;
+      }
+      .race {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 4px;
+        background: #eef1f6;
+        color: #4a5568;
+        font-size: 11px;
+      }
+      th[data-key]:after {
+        content: " ⇅";
+        color: #b6bdc9;
+        font-weight: 400;
+        font-size: 10px;
+      }
+      th.asc:after {
+        content: " ↑";
+        color: var(--accent);
+      }
+      th.desc:after {
+        content: " ↓";
+        color: var(--accent);
+      }
+      .legend {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .kpi {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+      .kpi div {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 9px 14px;
+        min-width: 120px;
+      }
+      .kpi span {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .kpi strong {
+        font-size: 17px;
+        font-weight: 650;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>G3 角色细颗粒度看板</h1>
+      <div class="sub" id="meta">—</div>
+
+      <div class="kpi" id="kpi"></div>
+
+      <div class="card">
+        <div style="font-weight: 500; margin-bottom: 8px">
+          胜率对局明细（21 组对阵 + 7 组镜像 · 判定 58/42 阈值）
+        </div>
+        <div id="matchups" style="max-height: 220px; overflow: auto"></div>
+      </div>
+
+      <div class="card">
+        <div class="note">
+          <b>口径</b>：普攻 / 技能 / 其他 = <b>来源分轨</b>（三者相加 ≈
+          总输出）；天赋伤害 =
+          <b>归因分轨</b
+          >，与来源分轨重叠、不可相加；部分天赋埋点记的是整段技能/DoT
+          伤害，可能与技能列相等或为其估算值。<br />
+          <b>收益合计</b> = 治疗 + 护盾吸收 + 格挡减伤（统一为血量点数）；吸血 /
+          技能治疗是治疗的子集，单列但不重复计入。护盾 /
+          格挡归属<b>受益单位</b>。增益(点·秒)与控制(s)是不同度量衡，不并入合计。<br />
+          <b>10s 归一</b> = 数值 ÷ 存活秒 × 10（存活s =
+          最后一次阵亡/战斗结束时刻，复活单位不重复累加）；<b>10s 综合</b> =
+          10s输出 + 10s收益；<b>总贡献</b> = 总输出 +
+          收益合计（绝对值，用于交叉验证）。<br />
+          ⚠️
+          短存活或「阵亡后仍可施法」的角色（如殉道者）10s归一会被放大，请结合总输出
+          / 总贡献 / 存活s
+          一起看。跨族对比受对局时长影响，建议结合种族筛选看同族内排名。判定：≥P90
+          🔴超模，≤P10 🔵待加强。
+        </div>
+      </div>
+
+      <div class="card toolbar">
+        <div class="seg" id="views">
+          <button data-view="over" class="on">总览</button>
+          <button data-view="out">输出分轨</button>
+          <button data-view="gain">收益分轨</button>
+          <button data-view="live">生存/承伤</button>
+        </div>
+        <label
+          >种族
+          <select id="race">
+            <option value="">全部</option>
+          </select></label
+        >
+        <label
+          >判定
+          <select id="verdict">
+            <option value="">全部</option>
+            <option value="超模">🔴 超模</option>
+            <option value="待加强">🔵 待加强</option>
+            <option value="正常">⚪ 正常</option>
+          </select></label
+        >
+        <label>搜索 <input type="search" id="q" placeholder="角色名" /></label>
+        <button id="csv">导出当前视图 CSV</button>
+        <span class="count" id="count"></span>
+      </div>
+
+      <div class="scroll">
+        <table id="tbl">
+          <thead>
+            <tr id="head"></tr>
+          </thead>
+          <tbody id="body"></tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span>点击表头排序（再点切换升/降）</span
+        ><span>🔴 10s综合 ≥ P90：疑似超模，优先复核</span
+        ><span>🔵 ≤ P10：优先评估加强</span>
+      </div>
+    </div>
+
+    <script id="role-data" type="application/json">
+      __ROLE_DATA__
+    </script>
+    <script>
+      (function () {
+        var raw = document.getElementById("role-data").textContent;
+        var DATA = JSON.parse(raw);
+        var rows = DATA.rows || [];
+        var COLS = [
+          { k: "name", t: "角色", g: "over out gain live", txt: true },
+          {
+            k: "raceCN",
+            t: "种族",
+            g: "over out gain live",
+            txt: true,
+            render: function (v) {
+              return '<span class="race">' + v + "</span>";
+            },
+          },
+          { k: "value", t: "总贡献", g: "over out gain" },
+          { k: "out", t: "总输出", g: "over out" },
+          { k: "out10", t: "10s输出", g: "over out" },
+          { k: "auto", t: "普攻", g: "over out" },
+          { k: "skill", t: "技能", g: "over out" },
+          { k: "other", t: "其他", g: "over out" },
+          { k: "talent", t: "天赋归因", g: "over out" },
+          { k: "outShare", t: "占全场%", g: "over out" },
+          {
+            k: "verdict",
+            t: "判定",
+            g: "over",
+            txt: true,
+            render: function (v) {
+              var c =
+                v === "超模" ? "b-over" : v === "待加强" ? "b-under" : "b-ok";
+              var s =
+                v === "超模"
+                  ? "🔴 超模"
+                  : v === "待加强"
+                    ? "🔵 待加强"
+                    : "⚪ 正常";
+              return '<span class="badge ' + c + '">' + s + "</span>";
+            },
+          },
+          { k: "total10", t: "10s综合", g: "over gain" },
+          { k: "gain", t: "收益合计", g: "over gain" },
+          { k: "gain10", t: "10s收益", g: "over gain" },
+          { k: "heal", t: "治疗", g: "gain" },
+          { k: "ls", t: "吸血", g: "gain" },
+          { k: "skillHeal", t: "技能治疗", g: "gain" },
+          { k: "shield", t: "护盾吸收", g: "gain" },
+          { k: "block", t: "格挡减伤", g: "gain" },
+          { k: "buff", t: "增益点·秒", g: "gain" },
+          { k: "ctrl", t: "控制s", g: "gain" },
+          { k: "surv", t: "存活s", g: "over live" },
+          { k: "taken", t: "承伤", g: "live" },
+          { k: "kills", t: "击杀", g: "live" },
+          { k: "deaths", t: "死亡", g: "live" },
+          { k: "casts", t: "技能释放", g: "live" },
+        ];
+        var view = "over",
+          sortKey = "total10",
+          sortDir = -1,
+          race = "",
+          verdict = "",
+          q = "";
+
+        // 种族下拉
+        var rs = Array.from(
+          new Set(
+            rows.map(function (r) {
+              return r.raceCN;
+            })
+          )
+        ).sort();
+        var sel = document.getElementById("race");
+        rs.forEach(function (r) {
+          var o = document.createElement("option");
+          o.value = r;
+          o.textContent = r;
+          sel.appendChild(o);
+        });
+
+        document.getElementById("meta").textContent =
+          (DATA.version || "GDD v3.4 / App v2.2") +
+          " ｜ 生成 " +
+          (DATA.generated || "") +
+          " ｜ " +
+          (DATA.battles || 0) +
+          " 场对局 ｜ 平均时长 " +
+          (DATA.avgDuration || 0) +
+          "s ｜ " +
+          rows.length +
+          " 个角色";
+
+        var M = DATA.matchups || [];
+        document.getElementById("matchups").innerHTML = M.length
+          ? '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>' +
+            '<th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)">对局</th>' +
+            '<th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--line)">A 胜率</th>' +
+            '<th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--line)">B 胜率</th>' +
+            '<th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--line)">判定</th></tr></thead><tbody>' +
+            M.map(function (m) {
+              return (
+                '<tr><td style="padding:4px 8px;border-bottom:1px solid #eef0f4">' +
+                m.a +
+                " vs " +
+                m.b +
+                "</td>" +
+                '<td style="text-align:right;padding:4px 8px;border-bottom:1px solid #eef0f4">' +
+                m.aPct.toFixed(1) +
+                "%</td>" +
+                '<td style="text-align:right;padding:4px 8px;border-bottom:1px solid #eef0f4">' +
+                m.bPct.toFixed(1) +
+                "%</td>" +
+                '<td style="text-align:right;padding:4px 8px;border-bottom:1px solid #eef0f4">' +
+                m.verdict +
+                "</td></tr>"
+              );
+            }).join("") +
+            "</tbody></table>"
+          : '<div style="color:var(--muted);font-size:12px">本次数据不含对局明细（旧缓存），请重新运行矩阵。</div>';
+
+        var over = rows.filter(function (r) {
+          return r.verdict === "超模";
+        });
+        var under = rows.filter(function (r) {
+          return r.verdict === "待加强";
+        });
+        var top = over.length
+          ? over.slice().sort(function (a, b) {
+              return b.total10 - a.total10;
+            })[0]
+          : null;
+        document.getElementById("kpi").innerHTML =
+          "<div><span>角色数</span><strong>" +
+          rows.length +
+          "</strong></div>" +
+          '<div><span>🔴 疑似超模</span><strong style="color:var(--red)">' +
+          over.length +
+          "</strong></div>" +
+          '<div><span>🔵 待加强</span><strong style="color:var(--blue)">' +
+          under.length +
+          "</strong></div>" +
+          "<div><span>10s综合最高</span><strong>" +
+          (top ? top.name + " " + Math.round(top.total10) : "—") +
+          "</strong></div>";
+
+        function visibleCols() {
+          return COLS.filter(function (c) {
+            return c.g.split(" ").indexOf(view) >= 0;
+          });
+        }
+        function num(v) {
+          return Math.round(v || 0).toLocaleString("en-US");
+        }
+        function cell(r, c) {
+          var v = r[c.k];
+          if (c.render)
+            return (
+              '<td class="' +
+              (c.txt ? "txt" : "") +
+              '">' +
+              c.render(v) +
+              "</td>"
+            );
+          if (typeof v === "string") return '<td class="txt">' + v + "</td>";
+          var dec =
+            c.k === "outShare" ||
+            c.k === "surv" ||
+            c.k === "ctrl" ||
+            c.k === "kills" ||
+            c.k === "deaths" ||
+            c.k === "casts";
+          return (
+            '<td class="num">' + (dec ? (v || 0).toFixed(1) : num(v)) + "</td>"
+          );
+        }
+
+        function render() {
+          var cols = visibleCols();
+          document.getElementById("head").innerHTML = cols
+            .map(function (c) {
+              var cls =
+                (c.txt ? "txt " : "") +
+                (sortKey === c.k ? (sortDir < 0 ? "desc" : "asc") : "");
+              return (
+                '<th class="' +
+                cls +
+                '" data-key="' +
+                c.k +
+                '">' +
+                c.t +
+                "</th>"
+              );
+            })
+            .join("");
+
+          var list = rows
+            .filter(function (r) {
+              if (race && r.raceCN !== race) return false;
+              if (verdict && r.verdict !== verdict) return false;
+              if (q && r.name.indexOf(q) < 0) return false;
+              return true;
+            })
+            .sort(function (a, b) {
+              var x = a[sortKey],
+                y = b[sortKey];
+              if (typeof x === "string") return x.localeCompare(y) * sortDir;
+              return ((x || 0) - (y || 0)) * sortDir;
+            });
+
+          document.getElementById("body").innerHTML = list
+            .map(function (r) {
+              return (
+                "<tr>" +
+                cols
+                  .map(function (c) {
+                    return cell(r, c);
+                  })
+                  .join("") +
+                "</tr>"
+              );
+            })
+            .join("");
+          document.getElementById("count").textContent =
+            "显示 " + list.length + " / " + rows.length + " 个角色";
+
+          Array.prototype.forEach.call(
+            document.querySelectorAll("#head th"),
+            function (th) {
+              th.onclick = function () {
+                var k = th.getAttribute("data-key");
+                if (sortKey === k) sortDir = -sortDir;
+                else {
+                  sortKey = k;
+                  sortDir = -1;
+                }
+                render();
+              };
+            }
+          );
+        }
+
+        document.getElementById("views").onclick = function (e) {
+          if (e.target.tagName !== "BUTTON") return;
+          view = e.target.getAttribute("data-view");
+          Array.prototype.forEach.call(
+            this.querySelectorAll("button"),
+            function (b) {
+              b.className = b.getAttribute("data-view") === view ? "on" : "";
+            }
+          );
+          render();
+        };
+        sel.onchange = function () {
+          race = this.value;
+          render();
+        };
+        document.getElementById("verdict").onchange = function () {
+          verdict = this.value;
+          render();
+        };
+        document.getElementById("q").oninput = function () {
+          q = this.value.trim();
+          render();
+        };
+
+        document.getElementById("csv").onclick = function () {
+          var cols = visibleCols();
+          var list = rows.filter(function (r) {
+            if (race && r.raceCN !== race) return false;
+            if (verdict && r.verdict !== verdict) return false;
+            if (q && r.name.indexOf(q) < 0) return false;
+            return true;
+          });
+          var lines = [
+            cols
+              .map(function (c) {
+                return c.t;
+              })
+              .join(","),
+          ].concat(
+            list.map(function (r) {
+              return cols
+                .map(function (c) {
+                  return typeof r[c.k] === "number"
+                    ? (r[c.k] || 0).toFixed(2)
+                    : r[c.k];
+                })
+                .join(",");
+            })
+          );
+          var blob = new Blob(["\ufeff" + lines.join("\n")], {
+            type: "text/csv;charset=utf-8",
+          });
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "G3_roles_" + view + ".csv";
+          a.click();
+          URL.revokeObjectURL(a.href);
+        };
+
+        render();
+      })();
+    </script>
+  </body>
+</html>

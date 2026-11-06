@@ -1,6 +1,17 @@
 "use strict";
 
 // src/engine/damage.ts
+var battleClock = 0;
+function setBattleClock(t) {
+  battleClock = t;
+}
+function nowOf(extraOpts) {
+  const explicit =
+    extraOpts && typeof extraOpts === "object" && "now" in extraOpts
+      ? extraOpts.now
+      : void 0;
+  return explicit ?? battleClock;
+}
 function calcDefReduction(def) {
   if (def <= 0) return 0;
   if (def <= 500) {
@@ -40,6 +51,7 @@ function checkCrit(critRate, tenacity = 0) {
   return Math.random() < critRate * reduction;
 }
 function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
+  let ignoreExtraDef = extraOpts?.ignoreExtraDef === true;
   const result = {
     rawDamage: 0,
     afterDef: 0,
@@ -122,52 +134,80 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
     if (attacker._slzsAtkMult) {
       effectiveAtk *= attacker._slzsAtkMult;
     }
+    if (attacker._hlRageAtkMult) {
+      effectiveAtk *= attacker._hlRageAtkMult;
+    }
+    if (
+      defender._bslrAtkDown &&
+      defender._bslrDebuffUntil &&
+      defender._bslrDebuffUntil > nowOf(extraOpts)
+    ) {
+      effectiveAtk *= 1 - defender._bslrAtkDown;
+    }
+    if (attacker.def.id === "hqs") {
+      const rowBonus = defender.row === 2 ? 0.2 : defender.row === 1 ? 0.1 : 0;
+      effectiveAtk *= 1 + rowBonus;
+      if (nowOf(extraOpts) > 60) effectiveAtk *= 1.5;
+    }
     if (attacker._frenzy) {
-      effectiveAtk *= 1.5;
+      effectiveAtk *= attacker._frenzy === 2 ? 2 : 1.5;
     }
     if (attacker._warriorAtkMult) {
       effectiveAtk *= attacker._warriorAtkMult;
     }
-    if (attacker._zfyxAtkUntil && attacker._zfyxAtkUntil > extraOpts?.now) {
+    if (attacker._zfyxAtkUntil && attacker._zfyxAtkUntil > nowOf(extraOpts)) {
       effectiveAtk *= 1.15;
     }
     if (
       attacker._zfyxAtkStacks &&
       attacker._zfyxAtkUntil &&
-      attacker._zfyxAtkUntil > extraOpts?.now
+      attacker._zfyxAtkUntil > nowOf(extraOpts)
     ) {
       effectiveAtk *= 1 + attacker._zfyxAtkStacks * 0.1;
     }
-    if (attacker._cutinDmgRed && extraOpts?.now !== void 0) {
+    if (
+      attacker._xdDmgDownUntil &&
+      attacker._xdDmgDownUntil > nowOf(extraOpts)
+    ) {
+      effectiveAtk *= 1 - (attacker._xdDmgDown || 0.2);
+    }
+    if (attacker.def.id === "mrsz" && defender.statuses.length > 0) {
+      effectiveAtk *= attacker.hasRevived ? 1.2 : 1.1;
+    }
+    if (attacker._cutinDmgRed) {
       effectiveAtk *= attacker._cutinDmgRed;
     }
-    if (
-      attacker._xdBlessUntil &&
-      attacker._xdBlessUntil > (extraOpts?.now ?? 0)
-    ) {
+    if (attacker._xdBlessUntil && attacker._xdBlessUntil > nowOf(extraOpts)) {
       effectiveAtk *= 1.1;
     }
     if (
       attacker.def.id === "qm" &&
       attacker._qmLayers &&
       attacker._qmUntil &&
-      attacker._qmUntil > (extraOpts?.now ?? 0)
+      attacker._qmUntil > nowOf(extraOpts)
     ) {
-      effectiveAtk *= 1 + attacker._qmLayers * 0.1;
+      effectiveAtk *= 1 + attacker._qmLayers * 0.06;
     }
     if (
       attacker._hqsStacks &&
       attacker._hqsExpire &&
-      attacker._hqsExpire > extraOpts?.now
+      attacker._hqsExpire > nowOf(extraOpts)
     ) {
       effectiveAtk *= 1 + attacker._hqsStacks * 0.25;
     }
     if (
       attacker._inspireAtkUntil &&
-      attacker._inspireAtkUntil > extraOpts?.now &&
+      attacker._inspireAtkUntil > nowOf(extraOpts) &&
       attacker._inspireAtkMult
     ) {
       effectiveAtk *= attacker._inspireAtkMult;
+    }
+    if (attacker._hunterBondLayers?.length) {
+      const nowH = nowOf(extraOpts);
+      let hBonus = 0;
+      for (const l of attacker._hunterBondLayers)
+        if (l.expire > nowH) hBonus += l.value;
+      effectiveAtk *= 1 + hBonus;
     }
     const mageMult = attacker._mageAtkMult || 1;
     result.rawDamage =
@@ -179,17 +219,24 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
   }
   if (type === "physical" /* Physical */) {
     let def = defender.currentPhysicalDef;
+    const baseDef = defender.basePhysicalDef ?? def;
     if (defender.statuses.some((s) => s.type === "curl")) def *= 1.5;
     if (defender.statuses.some((s) => s.type === "armorBreak" /* ArmorBreak */))
       def *= 0.5;
     if (defender._lyzDefMult) def *= defender._lyzDefMult;
+    if (
+      defender._lbmxArmorBreakUntil &&
+      defender._lbmxArmorBreakUntil > nowOf(extraOpts)
+    ) {
+      def *= 1 - (defender._lbmxArmorBreakPct || 0.2);
+    }
     if (defender._hyzStacks) def *= 1 + defender._hyzStacks * 0.06;
     if (defender._jddsDefBonus) def *= 1 + defender._jddsDefBonus;
     if (defender._warriorDefMult) def *= defender._warriorDefMult;
     if (
       defender._hqsStacks &&
       defender._hqsExpire &&
-      defender._hqsExpire > extraOpts?.now
+      defender._hqsExpire > nowOf(extraOpts)
     ) {
       def *= 1 + defender._hqsStacks * 0.7;
     }
@@ -197,9 +244,6 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
       def *= 0.9;
     if (defender.statuses.some((s) => s.type === "armorBreak" /* ArmorBreak */))
       def *= 0.5;
-    if (extraOpts?.ignoreBaseDef) {
-      def = 0;
-    }
     if (
       type === "physical" /* Physical */ &&
       defender.statuses.some((s) => s.type === "freeze" /* Freeze */)
@@ -209,46 +253,56 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
       return result;
     }
     let ignoreDef = extraOpts?.ignoreDefPct ?? 0;
-    if (
-      attacker.def.id === "bslr" &&
-      attacker._bslrBreakUntil &&
-      attacker._bslrBreakUntil > extraOpts?.now
-    ) {
-      ignoreDef = 0;
-    } else if (attacker.def.id === "bslr" && Math.random() < 0.35) {
-      ignoreDef = 1;
-    }
-    if (
+    const bslrChance = extraOpts?.isSkill === true ? 0.4 : 0.375;
+    const bslrActive =
       attacker.def.id === "bslr" &&
       !(
-        attacker._bslrBreakUntil &&
-        attacker._bslrBreakUntil > (extraOpts?.now ?? 0)
-      ) &&
-      Math.random() < 0.25
-    ) {
-      defender._antiHealMult = 0.4;
-      defender._antiHealUntil = (extraOpts?.now ?? 0) + 4;
+        attacker._bslrBreakUntil && attacker._bslrBreakUntil > nowOf(extraOpts)
+      );
+    if (attacker.def.id === "bslr" && !bslrActive) {
+      ignoreDef = 0;
+    } else if (bslrActive && Math.random() < bslrChance) {
+      ignoreExtraDef = true;
+      defender._antiHealMult = 0.75;
+      defender._antiHealUntil = nowOf(extraOpts) + 2;
     }
-    if (
-      defender._qdInvulnUntil &&
-      defender._qdInvulnUntil > (extraOpts?.now ?? 0)
-    ) {
+    if (defender._qdInvulnUntil && defender._qdInvulnUntil > nowOf(extraOpts)) {
       result.finalDamage = 0;
       return result;
     }
     let holyDr = 1;
+    if (defender._lyzDrUntil && defender._lyzDrUntil > nowOf(extraOpts)) {
+      holyDr *= 1 - (defender._lyzDr || 0.2);
+    }
     if (
       defender._qdDrUntil &&
-      defender._qdDrUntil > (extraOpts?.now ?? 0) &&
+      defender._qdDrUntil > nowOf(extraOpts) &&
       defender._qdDrPct
     ) {
       holyDr *= 1 - defender._qdDrPct;
     }
+    if (defender._hlRageDrMult) {
+      holyDr *= 1 - defender._hlRageDrMult;
+    }
+    if (defender.def.id === "mds" && extraOpts?.isSkill === true) {
+      const now = nowOf(extraOpts);
+      defender._mdsHitCount = (defender._mdsHitCount || 0) + 1;
+      defender._mdsHitUntil = now;
+      const stacks = Math.min(3, defender._mdsHitCount);
+      holyDr *= 1 - (stacks >= 3 ? 0.4 : 0.2);
+      if (stacks >= 3 && defender._mdsPunished !== now) {
+        defender._mdsPunished = now;
+        attacker.statuses.push({
+          type: "petrify" /* Petrify */,
+          remainingSeconds: 2,
+          stacks: 1,
+        });
+      }
+    }
     if (
       defender._sqShieldUntil &&
-      defender._sqShieldUntil > (extraOpts?.now ?? 0) &&
-      type === "magical" /* Magical */ &&
-      defender._sqShieldPhys
+      defender._sqShieldUntil > nowOf(extraOpts) &&
+      type === "magical" /* Magical */
     ) {
       holyDr *= 0.7;
     }
@@ -256,26 +310,25 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
       defender.def.id === "qm" &&
       defender._qmLayers &&
       defender._qmUntil &&
-      defender._qmUntil > (extraOpts?.now ?? 0)
+      defender._qmUntil > nowOf(extraOpts)
     ) {
       if (type === "physical" /* Physical */)
         def *= 1 + defender._qmLayers * 0.2;
       else if (type === "magical" /* Magical */)
         def *= 1 + defender._qmLayers * 0.2;
     }
-    if (
-      defender._xdBlessUntil &&
-      defender._xdBlessUntil > (extraOpts?.now ?? 0)
-    ) {
+    if (defender._xdBlessUntil && defender._xdBlessUntil > nowOf(extraOpts)) {
       holyDr *= 0.9;
     }
     if (defender.def.id === "sc" && defender._scDr) {
       holyDr *= 1 - defender._scDr;
     }
     result.afterOtherReduction *= holyDr;
-    if (ignoreDef > 0) {
-      def *= 1 - ignoreDef;
-    }
+    const basePart = Math.min(baseDef, Math.max(0, def));
+    const extraPart = Math.max(0, def - basePart);
+    if (ignoreExtraDef) def = basePart;
+    else if (extraOpts?.ignoreBaseDef) def = extraPart;
+    else if (ignoreDef > 0) def = basePart * (1 - ignoreDef) + extraPart;
     const defRed = calcDefReduction(def);
     result.afterDef = result.rawDamage * (1 - defRed);
     if (defender.physDamageReduction) {
@@ -283,17 +336,24 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
     }
   } else if (type === "magical" /* Magical */) {
     let def = defender.currentMagicalDef;
+    const baseDef = defender.baseMagicalDef ?? def;
     if (defender.statuses.some((s) => s.type === "curl")) def *= 1.5;
     if (defender.statuses.some((s) => s.type === "armorBreak" /* ArmorBreak */))
       def *= 0.5;
     if (defender._lyzDefMult) def *= defender._lyzDefMult;
+    if (
+      defender._lbmxArmorBreakUntil &&
+      defender._lbmxArmorBreakUntil > nowOf(extraOpts)
+    ) {
+      def *= 1 - (defender._lbmxArmorBreakPct || 0.2);
+    }
     if (defender._hyzStacks) def *= 1 + defender._hyzStacks * 0.06;
     if (defender._jddsDefBonus) def *= 1 + defender._jddsDefBonus;
     if (defender._warriorDefMult) def *= defender._warriorDefMult;
     if (
       defender._hqsStacks &&
       defender._hqsExpire &&
-      defender._hqsExpire > extraOpts?.now
+      defender._hqsExpire > nowOf(extraOpts)
     ) {
       def *= 1 + defender._hqsStacks * 0.7;
     }
@@ -303,6 +363,10 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
       def *= 0.5;
     if (defender.statuses.some((s) => s.type === "petrify" /* Petrify */))
       def *= 2;
+    const basePart = Math.min(baseDef, Math.max(0, def));
+    const extraPart = Math.max(0, def - basePart);
+    if (ignoreExtraDef) def = basePart;
+    else if (extraOpts?.ignoreBaseDef) def = extraPart;
     const defRed = calcDefReduction(def);
     result.afterDef = result.rawDamage * (1 - defRed);
   } else {
@@ -323,7 +387,7 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
   if (inspire) {
     otherReduction *= inspire.value ?? 0.7;
   }
-  if (defender._zzxDrUntil && defender._zzxDrUntil > extraOpts?.now) {
+  if (defender._zzxDrUntil && defender._zzxDrUntil > nowOf(extraOpts)) {
     otherReduction *=
       type === "physical" /* Physical */
         ? 1 - (defender._zzxDrPhys || 0)
@@ -370,6 +434,21 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
       result.finalDamage * Math.max(critDmgMult, 1)
     );
   }
+  if (
+    defender._sqShieldUntil &&
+    defender._sqShieldUntil > nowOf(extraOpts) &&
+    result.finalDamage > 0 &&
+    attacker !== defender &&
+    !attacker.isDead
+  ) {
+    const reflect = Math.max(1, Math.floor(result.rawDamage * 0.1));
+    attacker.currentHp -= reflect;
+    attacker.lastDamage = {
+      value: reflect,
+      time: nowOf(extraOpts),
+      type: "pure",
+    };
+  }
   return result;
 }
 function applyFatalStrike(attacker, damage, isSkill) {
@@ -412,115 +491,104 @@ function calcHeal(healer, target, atkRatio, extraOpts) {
 
 // src/data/races.ts
 var BASE_BONDS = {
+  // v3.3 平衡性调整（docs/V3.3平衡性调整.md）：羁绊数值以该文档为准
   ["beast" /* Beast */]: {
     2: { attackBonus: 5, defenseBonus: 10, special: "\u97E7\u6027+10%" },
-    // v2.22 用户设计: 攻5防10
     3: {
       attackBonus: 10,
-      defenseBonus: 20,
-      // v2.25: 防15→20
+      defenseBonus: 15,
       special:
-        "\u97E7\u6027+20%+\u5BF9<50%HP\u654C\u4EBA7%\u653B\u51FB\u7EAF\u7CB9\u4F24\u5BB3",
-      // v2.25: 韧15→20 低血5→7
+        "\u97E7\u6027+20%+\u5BF9<75%HP\u654C\u4EBA\u666E\u653B\u9644\u5E266%\u653B\u51FB\u7EAF\u7CB9\u4F24\u5BB3",
     },
     4: {
-      attackBonus: 25,
-      // v3.3: 15→25%
-      defenseBonus: 40,
-      // v2.25: 防30→40
+      attackBonus: 20,
+      defenseBonus: 25,
       special:
-        "\u97E7\u6027+40%+\u5BF9<75%HP\u654C\u4EBA40%\u653B\u51FB\u7EAF\u7CB9\u4F24\u5BB3",
-      // v3.3: 低血30→40%
+        "\u97E7\u6027+35%+\u5BF9<75%HP\u654C\u4EBA\u666E\u653B\u9644\u5E2615%\u653B\u51FB\u7EAF\u7CB9\u4F24\u5BB3",
     },
   },
   ["hunter" /* Hunter */]: {
-    2: { attackBonus: 5, hitRateBonus: 10 },
+    // v3.4 R1: 用户裁定「只增加攻击速度，不增加攻击力」
+    2: { attackSpeedBonus: 10, hitRateBonus: 10 },
     3: {
-      attackBonus: 10,
+      attackSpeedBonus: 15,
       hitRateBonus: 20,
       special:
-        "\u53CD\u51FB10%\u4F24\u5BB3+5%\u5438\u8840+\u6BCF7\u6B21\u653B\u51FB\u989D\u59161\u76EE\u6807(10%\u4F24\u5BB3)",
-      // v3.8
+        "\u53D7\u5230[\u5207\u5165]\u6280\u80FD\u4F24\u5BB3-15%+\u6BCF6\u6B21\u653B\u51FB\u989D\u59161\u76EE\u6807(35%\u4F24\u5BB3)",
     },
     4: {
-      attackBonus: 5,
-      // v3.5: 10→5%
-      hitRateBonus: 10,
-      // v3.5: 20→10%
+      attackSpeedBonus: 30,
+      hitRateBonus: 40,
       special:
-        "\u53CD\u51FB15%\u4F24\u5BB3+10%\u5438\u8840+\u6BCF5\u6B21\u653B\u51FB\u989D\u59161\u76EE\u6807(5%\u4F24\u5BB3)",
-      // v3.8
+        "\u53D7\u5230[\u5207\u5165]\u6280\u80FD\u4F24\u5BB3-25%+\u81EA\u8EAB+10%\u653B(\u6700\u591A3\u5C42/40s)+\u6BCF5\u6B21\u653B\u51FB\u989D\u59161\u76EE\u6807(70%\u4F24\u5BB3)",
     },
   },
   ["warrior" /* Warrior */]: {
-    // v2.29 用户微调: 恢复周期13/11/9s + 4名狂暴阈值80%
     2: {
-      hpBonus: 15,
+      hpBonus: 10,
       special:
-        "\u6BCF13s\u6062\u590D3%HP+HP>50%\u65F610%\u51CF\u4F24(\u9B54\u4F241.5\u500D)",
+        "5%\u51CF\u4F24(\u9B54\u4F241.5\u500D)+\u6BCF13s\u6062\u590D3%\u6700\u5927HP",
     },
     3: {
-      hpBonus: 25,
+      hpBonus: 20,
       special:
-        "\u6BCF11s\u6062\u590D5%HP+HP>40%\u65F615%\u51CF\u4F24(\u9B54\u4F241.5\u500D)+HP<60%\u65F6\u989D\u591610%\u653B",
+        "10%\u51CF\u4F24(\u9B54\u4F241.5\u500D)+\u6BCF11s\u6062\u590D4%\u6700\u5927HP+HP<60%\u65F6\u989D\u591610%\u653B",
     },
     4: {
-      hpBonus: 50,
+      hpBonus: 35,
       special:
-        "\u6BCF9s\u6062\u590D8%HP+HP>30%\u65F620%\u51CF\u4F24(\u9B54\u4F242\u500D)+HP<80%\u65F6\u989D\u591620%\u653B",
+        "15%\u51CF\u4F24(\u9B54\u4F241.5\u500D)+\u6BCF9s\u6062\u590D5%\u6700\u5927HP+HP<80%\u65F6\u989D\u591615%\u653B",
     },
   },
   ["mage" /* Mage */]: {
-    2: { special: "-15%\u9B54\u9632" },
+    2: { special: "-15%\u654C\u65B9\u9B54\u9632" },
     3: {
       special:
-        "-25%\u9B54\u9632+\u51B7\u5374-8%+\u65BD\u6CD535%\u6982\u7387\u5168\u4F53+3.5%\u653B20s",
+        "-20%\u654C\u65B9\u9B54\u9632+\u53CB\u65B9\u6280\u80FD\u51B7\u5374-7%+\u65BD\u6CD530%\u6982\u7387\u5168\u4F53\u6CD5\u5E08+2%\u653B15s(\u6BCF\u5C42\u72EC\u7ACB\u8BA1\u65F6)",
     },
     4: {
       special:
-        "-30%\u9B54\u9632+\u51B7\u5374-12%+\u65BD\u6CD535%\u6982\u7387\u5168\u4F53+3.5%\u653B20s",
+        "-30%\u654C\u65B9\u9B54\u9632+\u53CB\u65B9\u6280\u80FD\u51B7\u5374-9%+\u65BD\u6CD550%\u6982\u7387\u5168\u4F53\u6CD5\u5E08+3%\u653B25s(\u6BCF\u5C42\u72EC\u7ACB\u8BA1\u65F6)",
     },
   },
   ["undead" /* Undead */]: {
-    2: { attackBonus: 5, evasionBonus: 5 },
+    2: { evasionBonus: 5 },
     3: {
-      attackBonus: 10,
       evasionBonus: 10,
-      special: "\u590D\u6D3B10s+\u6BCF\u79D22%HP/8s+\u65E0\u654C2s",
+      special:
+        "\u9996\u6B21\u9635\u4EA110s\u540E\u590D\u6D3B\u81F315%HP\uFF0C2s\u540E\u6BCF\u79D2\u5931\u53BB3%\u6700\u5927HP(\u65E0\u6CD5\u9A71\u6563)",
     },
     4: {
-      attackBonus: 12,
-      // v2.16 削弱: 15→12
-      evasionBonus: 15,
-      // v2.13b 削弱: 21→15
+      evasionBonus: 20,
       special:
-        "\u7269\u7406\u51CF\u4F249%+\u590D\u6D3B5s+\u6BCF\u79D22.5%HP/10s+\u65E0\u654C2s",
-      // v2.16: 减伤11%→9%
+        "\u9996\u6B21\u9635\u4EA15s\u540E\u590D\u6D3B\u81F325%HP\uFF0C3s\u540E\u6BCF\u79D2\u5931\u53BB2%\u6700\u5927HP(\u65E0\u6CD5\u9A71\u6563)",
     },
   },
   ["dragon" /* Dragon */]: {
     2: {},
     3: {
       special:
-        "\u8D77\u59CB\u51B7\u5374-20%+\u51CF\u4F244%+\u5F00\u5C402\u500D\u51CF\u4F246s",
+        "\u8D77\u59CB\u51B7\u5374-20%+\u51CF\u4F248%+\u5F00\u5C402\u500D\u51CF\u4F246s",
     },
+    // v3.15d: 4→8
     4: {
       special:
-        "\u8D77\u59CB\u51B7\u5374-35%+\u51CF\u4F246%+\u5F00\u5C402.5\u500D\u51CF\u4F2410s",
+        "\u8D77\u59CB\u51B7\u5374-35%+\u51CF\u4F2412%+\u5F00\u5C402.5\u500D\u51CF\u4F2410s",
     },
+    // v3.15d: 6→12
   },
   ["holy" /* Holy */]: {
     2: {
       special:
-        "\u654C\u65B9#\u589E\u76CA/#\u6CBB\u7597\u6548\u679C-30%\uFF1A\u6211\u65B9\u5168\u4F53\u83B7\u5F975%\u76F8\u540C\u589E\u76CA/\u5E73\u520620%\u6CBB\u7597\u6548\u679C",
+        "\u654C\u65B9#\u589E\u76CA/#\u6CBB\u7597\u6548\u679C-10%\uFF1A\u6211\u65B9\u5168\u4F53\u83B7\u5F9710%\u76F8\u540C\u589E\u76CA(4s)/\u5E73\u5206\u539F\u672C4%\u6CBB\u7597",
     },
     3: {
       special:
-        "\u654C\u65B9#\u589E\u76CA/#\u6CBB\u7597/#\u63A7\u5236\u6548\u679C-20%\uFF1A\u6211\u65B910%\u589E\u76CA/\u5E73\u520630%\u6CBB\u7597/\u63A7\u5236\u53CD\u523610%",
+        "\u654C\u65B9#\u589E\u76CA/#\u6CBB\u7597/#\u63A7\u5236\u6548\u679C-15%\uFF1A\u6211\u65B915%\u589E\u76CA(5s)/\u5E73\u520610%\u6CBB\u7597/\u63A7\u5236\u53CD\u52365%",
     },
     4: {
       special:
-        "\u654C\u65B9#\u589E\u76CA/#\u6CBB\u7597/#\u63A7\u5236\u6548\u679C-30%\uFF1A\u6211\u65B920%\u589E\u76CA/\u5E73\u520650%\u6CBB\u7597/\u63A7\u5236\u53CD\u523620%",
+        "\u654C\u65B9#\u589E\u76CA/#\u6CBB\u7597/#\u63A7\u5236\u6548\u679C-20%\uFF1A\u6211\u65B920%\u589E\u76CA(5s)/\u5E73\u520615%\u6CBB\u7597/\u63A7\u5236\u53CD\u523610%",
     },
   },
 };
@@ -544,6 +612,7 @@ function getBondAtTier(race, count) {
     defenseBonus: ov.defenseBonus ?? tier.defenseBonus ?? 0,
     hpBonus: ov.hpBonus ?? tier.hpBonus ?? 0,
     hitRateBonus: ov.hitRateBonus ?? tier.hitRateBonus ?? 0,
+    attackSpeedBonus: ov.attackSpeedBonus ?? tier.attackSpeedBonus ?? 0,
     evasionBonus: ov.evasionBonus ?? tier.evasionBonus ?? 0,
     special: ov.special ?? tier.special,
   };
@@ -579,6 +648,11 @@ var RACE_CONFIG = {
     color: "#ff9800",
     short: "\u9F99",
   },
+  ["holy" /* Holy */]: {
+    label: "\u5723\u804C\u8005",
+    color: "#ffd54f",
+    short: "\u5723",
+  },
 };
 var RACE_BG = {
   ["beast" /* Beast */]: "linear-gradient(135deg,#4e342e,#3e2723)",
@@ -587,6 +661,7 @@ var RACE_BG = {
   ["mage" /* Mage */]: "linear-gradient(135deg,#0d47a1,#1565c0)",
   ["undead" /* Undead */]: "linear-gradient(135deg,#4a148c,#6a1b9a)",
   ["dragon" /* Dragon */]: "linear-gradient(135deg,#e65100,#ef6c00)",
+  ["holy" /* Holy */]: "linear-gradient(135deg,#b8932a,#8a6a12)",
 };
 function countRaceOnTeam(units) {
   const counts = /* @__PURE__ */ new Map();
@@ -622,42 +697,51 @@ function shuffle(arr) {
   }
   return a;
 }
-registerSkillHandler("lyz_heal", (caster, state, log, targets) => {
-  if (!caster.def.skill.heal) return;
-  const allies = state.units.filter((u) => u.team === caster.team && !u.isDead);
-  const deadDragons = state.units.filter(
-    (u) => u.team === caster.team && u.isDead && u.def.race === "dragon"
-  );
-  caster.castCount = (caster.castCount || 0) + 1;
-  const upgraded = caster.castCount >= 4;
-  let targetsList = allies
-    .filter((u) => u.def.race === "dragon")
+registerSkillHandler("lyz_heal", (caster, state, log) => {
+  const dragons = state.units
+    .filter(
+      (u) => u.team === caster.team && !u.isDead && u.def.race === "dragon"
+    )
     .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
-  if (targetsList.length === 0) return;
-  const selected = upgraded ? targetsList.slice(0, 2) : [targetsList[0]];
-  const ratio = upgraded ? 0.7 : 0.4;
-  const dr = upgraded ? 0.3 : 0.2;
-  for (const t of selected) {
-    const healAmt = Math.floor(caster.currentAttack * ratio);
-    t.currentHp = Math.min(t.maxHp, t.currentHp + healAmt);
-    log.push({
-      time: state.time,
-      text: `\u{1F3B5} ${caster.def.name} \u6CBB\u7597 ${t.def.name}: +${healAmt}${upgraded ? "(\u5F3A\u5316)" : ""}`,
-      type: "heal",
-    });
-  }
-  if (deadDragons.length > 0) {
-    const reviveTarget =
-      deadDragons[Math.floor(Math.random() * deadDragons.length)];
-    reviveTarget.isDead = false;
-    reviveTarget.currentHp = Math.floor(reviveTarget.maxHp * 0.5);
-    reviveTarget.statuses = [];
-    reviveTarget.tempReviveTimer = 2;
-    log.push({
-      time: state.time,
-      text: `\u{1F3B5} ${caster.def.name} \u4E34\u65F6\u590D\u6D3B ${reviveTarget.def.name} 5s!`,
-      type: "status",
-    });
+  if (dragons.length === 0) return;
+  caster.castCount = (caster.castCount || 0) + 1;
+  const upgraded = caster.castCount % 5 === 0;
+  const t = dragons[0];
+  t.statuses.push({
+    type: "lyz_heal_dot",
+    remainingSeconds: 4,
+    stacks: 1,
+    value: Math.floor(caster.currentAttack * 0.4),
+    sourceId: caster.id,
+  });
+  t._lyzDrUntil = state.time + 4;
+  t._lyzDr = 0.2;
+  log.push({
+    time: state.time,
+    text: `\u{1F3B5} ${caster.def.name} \u6CBB\u7597 ${t.def.name}: \u6BCF\u79D2\u653B\u51FB\xD740% + \u51CF\u4F2420% \xD74s`,
+    type: "heal",
+  });
+  if (upgraded) {
+    const dead = state.units.filter(
+      (u) =>
+        u.team === caster.team &&
+        u.isDead &&
+        u.def.race === "dragon" &&
+        !u.tempReviveTimer
+    );
+    if (dead.length > 0) {
+      const r = dead[Math.floor(Math.random() * dead.length)];
+      r.isDead = false;
+      r.currentHp = Math.max(1, Math.floor(r.maxHp * 0.5));
+      r.statuses = [];
+      r.tempReviveTimer = 5;
+      r.invincibleTimer = 5;
+      log.push({
+        time: state.time,
+        text: `\u{1F3B5} ${caster.def.name} \u5347\u7EA7\u590D\u6D3B ${r.def.name} \u65E0\u654C5s`,
+        type: "status",
+      });
+    }
   }
 });
 registerSkillHandler("srm_fire", (caster, state, log) => {
@@ -668,11 +752,25 @@ registerSkillHandler("srm_fire", (caster, state, log) => {
   const cost = Math.floor(caster.currentHp * 0.05);
   caster.currentHp -= cost;
   const target = enemies[Math.floor(Math.random() * enemies.length)];
-  const result = calcDamage(caster, target, 1.65, "magical" /* Magical */, {
-    // v2.36: 160→165%
-    isSkill: true,
-  });
+  const result = calcDamage(
+    caster,
+    target,
+    caster.def.skill.damage?.[0]?.atkRatio ?? 1.8,
+    "magical" /* Magical */,
+    {
+      // v3.16: 180%
+      isSkill: true,
+    }
+  );
   target.currentHp -= result.finalDamage;
+  trackSkill(
+    state,
+    caster.id,
+    caster.def.skill.id,
+    caster.def.skill.name,
+    result.finalDamage,
+    "magical"
+  );
   target.statuses.push({
     type: "stun" /* Stun */,
     remainingSeconds: 0.5,
@@ -694,7 +792,7 @@ registerSkillHandler("srm_fire", (caster, state, log) => {
     type: "damage",
   });
   const roll3 = Math.random();
-  const nCasts = roll3 < 0.2 ? 3 : roll3 < 0.6 ? 2 : 1;
+  const nCasts = roll3 < 0.25 ? 3 : roll3 < 0.7 ? 2 : 1;
   for (let i = 1; i < nCasts; i++) {
     const t2 = enemies.filter((u) => u.id !== target.id);
     if (t2.length === 0) break;
@@ -750,13 +848,13 @@ registerSkillHandler("mrsz_doom", (caster, state, log) => {
     (a, b) => (b.totalDamageDealt || 0) - (a.totalDamageDealt || 0)
   )[0];
   if (topDmg) {
-    topDmg._healReduction = 0.5;
+    topDmg._healReduction = 0.75;
     topDmg._healReductionUntil = state.time + 8;
     topDmg.statuses.push({
       type: "doom",
       remainingSeconds: 8,
       stacks: 1,
-      value: Math.floor(caster.currentAttack * 0.09),
+      value: Math.floor(caster.currentAttack * 0.13),
       // v2.18: 10%→9%
       sourceId: caster.id,
     });
@@ -798,18 +896,13 @@ registerSkillHandler("swxz_drain", (caster, state, log) => {
   else pool = enemies.filter((e) => e.row === 2 /* Back */);
   if (pool.length === 0) pool = enemies;
   const target = pool[Math.floor(Math.random() * pool.length)];
-  const perTick = Math.floor(target.currentAttack * 0.06 + target.maxHp * 0.02);
+  const perTick = Math.floor(caster.currentAttack * 0.06 + target.maxHp * 0.01);
   target.statuses.push({
     type: "drain",
     remainingSeconds: 6,
     stacks: 1,
     value: perTick,
     sourceId: caster.id,
-  });
-  target.statuses.push({
-    type: "curse" /* Curse */,
-    remainingSeconds: 4,
-    stacks: 1,
   });
   state.trackTalent(
     state,
@@ -873,7 +966,7 @@ registerSkillHandler("ds_bite", (caster, state, log) => {
     remainingSeconds: 3,
     stacks: 1,
   });
-  const perTick = Math.floor(caster.currentAttack * 0.77 + 10);
+  const perTick = Math.floor(caster.currentAttack * 0.95 + 10);
   target.statuses.push({
     type: "bite",
     remainingSeconds: 3,
@@ -906,18 +999,14 @@ registerSkillHandler("yammxz_swap", (caster, state, log) => {
   const enemies = state.units.filter(
     (u) => u.team !== caster.team && !u.isDead
   );
-  const hit = [];
-  for (const me of [caster, buddy]) {
-    const sym = enemies.find((e) => e.row === me.row && e.col === me.col);
-    if (sym) hit.push(sym);
-  }
+  const hit = shuffle(enemies).slice(0, 2);
   for (const t of hit) {
     t.statuses.push({
       type: "silence" /* Silence */,
       remainingSeconds: 4,
       stacks: 1,
     });
-    const dmg = Math.floor(caster.currentAttack * 1.1);
+    const dmg = Math.floor(caster.currentAttack * 1.2);
     t.currentHp -= dmg;
     addStat(state, t.id, "totalDamageReceived", dmg);
     addStat(state, caster.id, "totalDamageDealt", dmg);
@@ -977,7 +1066,7 @@ registerSkillHandler("hyz_shield", (caster, state, log) => {
       });
     }
   }
-  const shieldVal = Math.floor(caster.currentAttack * 0.9 * stacks);
+  const shieldVal = Math.floor(caster.currentAttack * 0.8 * stacks);
   caster._shield = (caster._shield || 0) + shieldVal;
   caster._shieldUntil = state.time + 7;
   lowest._shield = (lowest._shield || 0) + shieldVal;
@@ -1025,21 +1114,27 @@ registerSkillHandler("hlyl_fire", (caster, state, log) => {
   const target = pool[0];
   target.statuses.push({
     type: "hlyl_burn",
-    remainingSeconds: 6,
+    remainingSeconds: 7,
     stacks: 1,
-    value: Math.floor(caster.currentAttack * 0.5),
+    value: Math.floor(
+      caster.currentAttack * (caster.def.skill.damage?.[0]?.atkRatio ?? 0.35)
+    ),
     sourceId: caster.id,
   });
   state.trackTalent(
     state,
     caster.id,
     "\u706B\u7130\u55B7\u5410(DoT)",
-    Math.floor(caster.currentAttack * 0.5 * 6),
+    Math.floor(
+      caster.currentAttack *
+        (caster.def.skill.damage?.[0]?.atkRatio ?? 0.35) *
+        7
+    ),
     "damage"
   );
   log.push({
     time: state.time,
-    text: `\u{1F525} ${caster.def.name} \u55B7\u5410 ${target.def.name}: \u6BCF\u79D250%\u9B54\u6CD5\xD76s`,
+    text: `\u{1F525} ${caster.def.name} \u55B7\u5410 ${target.def.name}: \u6BCF\u79D235%\u9B54\u6CD5\xD77s`,
     type: "status",
   });
 });
@@ -1048,16 +1143,22 @@ registerSkillHandler("xyfl_chaos", (caster, state, log) => {
     (u) => u.team !== caster.team && !u.isDead
   );
   if (enemies.length === 0) return;
-  const rows = [0, 1, 2].sort(() => Math.random() - 0.5).slice(0, 2);
-  const targets = enemies.filter((e) => rows.includes(e.row));
+  const targets = shuffle(enemies).slice(0, 4);
   const hitCount = targets.length;
   for (const t of targets) {
-    let ratio = 1.65;
-    if (hitCount >= 5) ratio *= 0.7;
+    const ratio = caster.def.skill.damage?.[0]?.atkRatio ?? 2.4;
     const result = calcDamage(caster, t, ratio, "physical" /* Physical */, {
       isSkill: true,
     });
     t.currentHp -= result.finalDamage;
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      result.finalDamage,
+      "physical"
+    );
     t.lastHitBy = caster.id;
     addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
     addStat(state, caster.id, "skillDamage", result.finalDamage);
@@ -1068,22 +1169,12 @@ registerSkillHandler("xyfl_chaos", (caster, state, log) => {
       type: "damage",
     });
   }
-  for (const t of targets) {
-    if (Math.random() < 0.6) {
-      const mates = state.units.filter(
-        (u) => u.team === t.team && !u.isDead && u.id !== t.id
-      );
-      if (mates.length > 0) {
-        const mate = mates[Math.floor(Math.random() * mates.length)];
-        const r0 = t.row,
-          c0 = t.col;
-        t.row = mate.row;
-        t.col = mate.col;
-        mate.row = r0;
-        mate.col = c0;
-      }
-    }
-  }
+  const cells = targets.map((t) => ({ row: t.row, col: t.col }));
+  const shuffledCells = shuffle(cells);
+  targets.forEach((t, i) => {
+    t.row = shuffledCells[i].row;
+    t.col = shuffledCells[i].col;
+  });
   state.trackTalent(
     state,
     caster.id,
@@ -1117,7 +1208,8 @@ registerSkillHandler("sjsn_freeze", (caster, state, log) => {
     type: "sjsn_dot",
     remainingSeconds: 3,
     stacks: 1,
-    value: Math.floor(caster.currentAttack * 0.9),
+    value: Math.floor(caster.currentAttack * 0.8),
+    // v3.16: 80%,
     sourceId: caster.id,
   });
   state.trackTalent(
@@ -1145,14 +1237,26 @@ registerSkillHandler("mds_skill", (caster, state, log) => {
       targets.push(inRow[Math.floor(Math.random() * inRow.length)]);
   }
   for (const t of targets) {
-    const result = calcDamage(caster, t, 1.65, "magical" /* Magical */, {
-      isSkill: true,
-    });
+    const result = calcDamage(
+      caster,
+      t,
+      caster.def.skill.damage?.[0]?.atkRatio ?? 1.35,
+      "pure" /* Pure */,
+      { isSkill: true }
+    );
     t.currentHp -= result.finalDamage;
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      result.finalDamage,
+      "physical"
+    );
     t.lastHitBy = caster.id;
     t.statuses.push({
-      type: "bind" /* Bind */,
-      remainingSeconds: 4,
+      type: "petrify" /* Petrify */,
+      remainingSeconds: 3,
       stacks: 1,
     });
     addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
@@ -1191,14 +1295,29 @@ registerSkillHandler("fdzs_combo", (caster, state, log) => {
   );
   if (enemies.length === 0) return;
   let total = 0;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 5; i++) {
     const t = enemies[Math.floor(Math.random() * enemies.length)];
-    const result = calcDamage(caster, t, 1.15, "physical" /* Physical */, {
-      // v3.1: 110→115%
-      isSkill: true,
-      ignoreBaseDef: true,
-    });
+    const result = calcDamage(
+      caster,
+      t,
+      caster.def.skill.damage?.[0]?.atkRatio ?? 0.65,
+      "physical" /* Physical */,
+      {
+        // v3.4: 读data 65%
+        isSkill: true,
+        ignoreExtraDef: true,
+        // v3.4 R4: 无视额外防御，保留基础防御
+      }
+    );
     t.currentHp -= result.finalDamage;
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      result.finalDamage,
+      "physical"
+    );
     total += result.finalDamage;
   }
   addStat(state, caster.id, "totalDamageDealt", total);
@@ -1206,42 +1325,62 @@ registerSkillHandler("fdzs_combo", (caster, state, log) => {
   state.trackTalent(
     state,
     caster.id,
-    "\u75BE\u98CE\u8FDE\u51FB(6\u8FDE)",
+    "\u75BE\u98CE\u8FDE\u51FB(5\u8FDE)",
     total,
     "damage"
   );
   log.push({
     time: state.time,
-    text: `\u{1F32A} ${caster.def.name} \u75BE\u98CE\u8FDE\u51FB: 6\u6B21\u653B\u51FB \u603B\u4F24${total}`,
+    text: `\u{1F32A} ${caster.def.name} \u75BE\u98CE\u8FDE\u51FB: 5\u6B21\u653B\u51FB \u603B\u4F24${total}`,
     type: "damage",
   });
 });
 registerSkillHandler("pp_sleep", (caster, state, log) => {
-  caster.statuses.push({
-    type: "sleep" /* Sleep */,
-    remainingSeconds: 4,
-    stacks: 1,
-  });
   const enemies = state.units.filter(
     (u) => u.team !== caster.team && !u.isDead
   );
-  const back = enemies.filter((e) => e.row === 2 /* Back */);
-  if (back.length > 0) {
-    const target = back[Math.floor(Math.random() * back.length)];
-    target.statuses.push({
+  if (Math.random() < 0.5) {
+    caster.statuses.push({
       type: "sleep" /* Sleep */,
       remainingSeconds: 4,
       stacks: 1,
     });
-    log.push({
-      time: state.time,
-      text: `\u{1F4A4} ${caster.def.name} \u50AC\u7720 ${target.def.name}: \u53CC\u65B9\u7761\u77204s`,
-      type: "status",
-    });
+    const back = enemies.filter((e) => e.row === 2 /* Back */);
+    const pool = back.length > 0 ? back : enemies;
+    if (pool.length > 0) {
+      const target = pool[Math.floor(Math.random() * pool.length)];
+      target.statuses.push({
+        type: "sleep" /* Sleep */,
+        remainingSeconds: 4,
+        stacks: 1,
+      });
+      log.push({
+        time: state.time,
+        text: `\u{1F4A4} ${caster.def.name} \u50AC\u7720\u2460 ${target.def.name}: \u53CC\u65B9\u7761\u77204s`,
+        type: "status",
+      });
+    } else {
+      log.push({
+        time: state.time,
+        text: `\u{1F4A4} ${caster.def.name} \u50AC\u7720\u2460: \u65E0\u654C\u4EBA\uFF0C\u53EA\u7761\u81EA\u5DF14s`,
+        type: "status",
+      });
+    }
   } else {
+    caster.statuses.push({
+      type: "sleep" /* Sleep */,
+      remainingSeconds: 5,
+      stacks: 1,
+    });
+    const picked = shuffle(enemies).slice(0, 2);
+    for (const t of picked) {
+      t._drowsyUntil = state.time + 6;
+      t.hitRateMod = (t.hitRateMod || 0) - 0.75;
+      t._drowsyApplied = 0.75;
+    }
     log.push({
       time: state.time,
-      text: `\u{1F4A4} ${caster.def.name} \u50AC\u7720: \u540E\u6392\u65E0\u4EBA, \u53EA\u7761\u81EA\u5DF1`,
+      text: `\u{1F4A4} ${caster.def.name} \u50AC\u7720\u2461 \u81EA\u8EAB\u77615s\uFF0C${picked.length}\u540D\u654C\u4EBA\u56F0\u610F6s(\u547D\u4E2D\u7387-75%)`,
       type: "status",
     });
   }
@@ -1306,7 +1445,7 @@ registerSkillHandler("ldshz_buff", (caster, state, log) => {
   );
   for (const a of sameRow) {
     a.critRate = (a.critRate || 0) + 0.2;
-    a.lifeSteal = (a.lifeSteal || 0) + 0.3;
+    a.lifeSteal = (a.lifeSteal || 0) + 0.35;
     a._ldshzBuffUntil = state.time + 6;
   }
   log.push({
@@ -1322,7 +1461,7 @@ registerSkillHandler("jdds_steal", (caster, state, log) => {
   if (enemies.length === 0) return;
   enemies.sort((a, b) => b.currentAttack - a.currentAttack);
   const target = enemies[0];
-  const stealAtk = Math.floor(target.currentAttack * 0.3);
+  const stealAtk = Math.floor(target.currentAttack * 0.2);
   target.currentAttack -= stealAtk;
   caster.currentAttack += stealAtk;
   caster._stolenAtk = (caster._stolenAtk || 0) + stealAtk;
@@ -1346,6 +1485,17 @@ registerSkillHandler("aysl_strike", (caster, state, log) => {
     isSkill: true,
   });
   target.currentHp -= result.finalDamage;
+  addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
+  addStat(state, caster.id, "skillDamage", result.finalDamage);
+  addStat(state, caster.id, "physicalDamage", result.finalDamage);
+  trackSkill(
+    state,
+    caster.id,
+    caster.def.skill.id,
+    caster.def.skill.name,
+    result.finalDamage,
+    "physical"
+  );
   target._markDmg = (target._markDmg || 0) + 0.25;
   target._markExpire = state.time + 4;
   log.push({
@@ -1371,6 +1521,14 @@ registerSkillHandler("xdds_fire", (caster, state, log, targets) => {
       isSkill: true,
     });
     t.currentHp -= result.finalDamage;
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      result.finalDamage,
+      "physical"
+    );
     t.lastDamage = {
       value: result.finalDamage,
       time: state.time,
@@ -1405,11 +1563,19 @@ registerSkillHandler("xdds_fire", (caster, state, log, targets) => {
     const targetsInRow = enemies.filter((e) => e.row === selectedRow);
     if (targetsInRow.length === 0) return;
     for (const t of targetsInRow) {
-      const result = calcDamage(caster, t, 3.1, "magical" /* Magical */, {
-        // P0修复
+      const result = calcDamage(caster, t, 3, "magical" /* Magical */, {
+        // v3.16 用户: 陨石300%
         isSkill: true,
       });
       t.currentHp -= result.finalDamage;
+      trackSkill(
+        state,
+        caster.id,
+        caster.def.skill.id,
+        caster.def.skill.name,
+        result.finalDamage,
+        "physical"
+      );
       t.lastDamage = {
         value: result.finalDamage,
         time: state.time,
@@ -1437,12 +1603,21 @@ registerSkillHandler("bjl_wing", (caster, state, log) => {
   const enemies = state.units.filter(
     (u) => u.team !== caster.team && !u.isDead
   );
-  const midBack = enemies
-    .filter((e) => e.row === 1 /* Mid */ || e.row === 2 /* Back */)
-    .sort((a, b) => b.row - a.row);
-  if (midBack.length === 0) return;
-  const targets = midBack.slice(0, 2);
-  const dmgRatios = [1.8, 2.3];
+  const mid = shuffle(enemies.filter((e) => e.row === 1 /* Mid */));
+  const back = shuffle(enemies.filter((e) => e.row === 2 /* Back */));
+  const picked = [mid[0], back[0]].filter(Boolean);
+  if (picked.length < 2)
+    picked.push(
+      ...shuffle(enemies.filter((e) => !picked.includes(e))).slice(
+        0,
+        2 - picked.length
+      )
+    );
+  const targets = picked.slice(0, 2);
+  const dmgRatios = [
+    caster.def.skill.damage?.[0]?.atkRatio ?? 2,
+    caster.def.skill.damage?.[1]?.atkRatio ?? 2.4,
+  ];
   for (let i = 0; i < targets.length; i++) {
     const t = targets[i];
     const result = calcDamage(
@@ -1455,6 +1630,14 @@ registerSkillHandler("bjl_wing", (caster, state, log) => {
       }
     );
     t.currentHp -= result.finalDamage;
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      result.finalDamage,
+      "physical"
+    );
     t.lastDamage = {
       value: result.finalDamage,
       time: state.time,
@@ -1480,7 +1663,7 @@ registerSkillHandler("dl_stomp", (caster, state, log) => {
   const enemies = state.units.filter(
     (u) => u.team !== caster.team && !u.isDead
   );
-  const rowMultipliers = { 0: 1.4, 1: 1.1, 2: 0.8 };
+  const rowMultipliers = { 0: 1.3, 1: 1, 2: 0.7 };
   const baseRatio = caster.def.skill.damage?.[0]?.atkRatio ?? 1.5;
   for (const t of enemies) {
     const ratio = baseRatio * (rowMultipliers[t.row] ?? 1);
@@ -1488,6 +1671,14 @@ registerSkillHandler("dl_stomp", (caster, state, log) => {
       isSkill: true,
     });
     t.currentHp -= result.finalDamage;
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      result.finalDamage,
+      "physical"
+    );
     t.lastDamage = {
       value: result.finalDamage,
       time: state.time,
@@ -1543,6 +1734,14 @@ registerSkillHandler("xblr_shot", (caster, state, log) => {
       let dmg = result.finalDamage;
       if (i === 2) dmg = Math.floor(dmg * 1.35);
       t.currentHp -= dmg;
+      trackSkill(
+        state,
+        caster.id,
+        caster.def.skill.id,
+        caster.def.skill.name,
+        dmg,
+        "physical"
+      );
       addStat(state, caster.id, "totalDamageDealt", dmg);
       addStat(state, caster.id, "skillDamage", dmg);
       addStat(state, caster.id, "physicalDamage", dmg);
@@ -1569,13 +1768,18 @@ registerSkillHandler("bslr_shot", (caster, state, log) => {
       remainingSeconds: 3,
       stacks: 1,
       value: Math.floor(caster.currentAttack * 0.9),
+      // v3.16f 回滚: 文档90%/s
       sourceId: caster.id,
     });
-    t._slowUntil = Math.max(t._slowUntil || 0, state.time + 3);
-    t._slowPct = 0.18;
+    t._bslrDebuffUntil = Math.max(t._bslrDebuffUntil || 0, state.time + 4);
+    if (Math.random() < 0.5) {
+      t._bslrAtkDown = Math.min(0.3, (t._bslrAtkDown || 0) + 0.1);
+    } else {
+      t._bslrSlowDown = Math.min(0.6, (t._bslrSlowDown || 0) + 0.2);
+    }
     log.push({
       time: state.time,
-      text: `\u2744\uFE0F ${caster.def.name} \u6301\u7EED\u5C04\u51FB ${t.def.name}: \u6BCF\u79D290%\xD73s+\u964D\u901F18%`,
+      text: `\u2744\uFE0F ${caster.def.name} \u6301\u7EED\u5C04\u51FB ${t.def.name}: \u6BCF\u79D2120%\xD73s+\u964D\u653B/\u964D\u901F4s`,
       type: "status",
     });
   }
@@ -1585,6 +1789,14 @@ registerSkillHandler("bslr_shot", (caster, state, log) => {
       isSkill: true,
     });
     t.currentHp -= result.finalDamage;
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      result.finalDamage,
+      "physical"
+    );
     t.lastDamage = {
       value: result.finalDamage,
       time: state.time,
@@ -1614,45 +1826,48 @@ registerSkillHandler("zzx_buff", (caster, state, log) => {
   if (allies.length === 0) return;
   const beast = allies.filter((u) => u.def.race === "beast");
   const target = beast[0] || allies.sort(() => Math.random() - 0.5)[0];
-  const atkBuff = Math.floor(target.currentAttack * 0.35);
+  const atkBuff = Math.floor(target.currentAttack * 0.25);
   target.currentAttack += atkBuff;
   target._atkBuffAmt = (target._atkBuffAmt || 0) + atkBuff;
-  target._atkBuffUntil = state.time + 5;
-  target._atkBuffPct = 0.35;
+  target._atkBuffUntil = state.time + 7;
+  target._atkBuffPct = 0.25;
   if (state.trackTalent)
     state.trackTalent(
       state,
       caster.id,
-      "\u9F13\u821E(+35%\u653B)",
-      atkBuff * 5,
+      "\u9F13\u821E(+25%\u653B)",
+      atkBuff * 7,
       "buff"
     );
-  caster._zzxDrPhys = 0.15;
-  caster._zzxDrMag = 0.25;
+  caster._zzxDrPhys = 0.1;
+  caster._zzxDrMag = 0.2;
   caster._zzxDrUntil = state.time + 7;
-  target._zzxDrPhys = 0.15;
-  target._zzxDrMag = 0.25;
+  target._zzxDrPhys = 0.1;
+  target._zzxDrMag = 0.2;
   target._zzxDrUntil = state.time + 7;
   log.push({
     time: state.time,
-    text: `\u{1F4EF} ${caster.def.name} \u9F13\u821E ${target.def.name}: +35%\u653B+\u7269\u51CF15%\u9B54\u51CF25%\xD77s`,
+    text: `\u{1F4EF} ${caster.def.name} \u9F13\u821E ${target.def.name}: +25%\u653B+\u7269\u51CF10%\u9B54\u51CF20%\xD77s`,
     type: "status",
   });
 });
 registerSkillHandler("bsxl_freeze", (caster, state, log) => {
-  const enemies = state.units
-    .filter((u) => u.team !== caster.team && !u.isDead)
-    .filter((u) => u.row === 2);
-  if (enemies.length === 0) return;
+  const aliveEnemies = state.units.filter(
+    (u) => u.team !== caster.team && !u.isDead
+  );
+  const rows = [...new Set(aliveEnemies.map((u) => u.row))];
+  if (rows.length === 0) return;
+  const row = rows[Math.floor(Math.random() * rows.length)];
+  const enemies = aliveEnemies.filter((u) => u.row === row);
   caster._bsxlFreezeCount = (caster._bsxlFreezeCount || 0) + 1;
-  const isFreeze = caster._bsxlFreezeCount >= 3;
+  const isFreeze = caster._bsxlFreezeCount >= 2;
   if (isFreeze) caster._bsxlFreezeCount = 0;
   for (const t of enemies) {
     let dmgRatio = 0.8;
     let dmgType = "magical"; /* Magical */
     if (isFreeze) {
       dmgRatio = 0.8;
-      dmgType = "pure" /* Pure */;
+      dmgType = "pure"; /* Pure */
       t.statuses.push({
         type: "freeze" /* Freeze */,
         remainingSeconds: 3,
@@ -1661,17 +1876,27 @@ registerSkillHandler("bsxl_freeze", (caster, state, log) => {
     } else {
       t.statuses.push({
         type: "bsxl_dot",
-        remainingSeconds: 3,
+        remainingSeconds: 4,
         stacks: 1,
-        value: Math.floor(caster.currentAttack * 0.8),
+        value: Math.floor(
+          caster.currentAttack * (caster.def.skill.damage?.[0]?.atkRatio ?? 0.6)
+        ),
         sourceId: caster.id,
       });
-      t._slowUntil = Math.max(t._slowUntil || 0, state.time + 3);
-      t._slowPct = 0.2;
+      t._slowUntil = Math.max(t._slowUntil || 0, state.time + 4);
+      t._slowPct = 0.4;
       dmgRatio = 0;
     }
     const result = calcDamage(caster, t, dmgRatio, dmgType, { isSkill: true });
     t.currentHp -= result.finalDamage;
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      result.finalDamage,
+      "physical"
+    );
     t.lastHitBy = caster.id;
     addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
     addStat(state, caster.id, "skillDamage", result.finalDamage);
@@ -1696,7 +1921,7 @@ registerSkillHandler("fxz_analyze", (caster, state, log) => {
   if (targets.length === 0) return;
   for (const t of targets) {
     if (t.currentPhysicalDef < t.currentMagicalDef) {
-      t.currentPhysicalDef = Math.floor(t.currentPhysicalDef * 1.05);
+      t.currentPhysicalDef = Math.floor(t.currentPhysicalDef * 1.06);
     } else {
       t.currentMagicalDef = Math.floor(t.currentMagicalDef * 1.05);
     }
@@ -1724,12 +1949,26 @@ registerSkillHandler("bmxz_charge", (caster, state, log) => {
   const dmgPerTarget =
     targets.length >= 5 ? Math.floor(baseDmg * 0.7) : Math.floor(baseDmg);
   for (const t of targets) {
-    const result = calcDamage(caster, t, 1.9, "magical" /* Magical */, {
-      isSkill: true,
-    });
+    const result = calcDamage(
+      caster,
+      t,
+      caster.def.skill.damage?.[0]?.atkRatio ?? 2,
+      "magical" /* Magical */,
+      {
+        isSkill: true,
+      }
+    );
     let finalDmg = result.finalDamage;
     if (targets.length >= 5) finalDmg = Math.floor(finalDmg * 0.7);
     t.currentHp -= finalDmg;
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      finalDmg,
+      "magical"
+    );
     t.lastDamage = { value: finalDmg, time: state.time, type: "magical" };
     t.lastHitBy = caster.id;
     addStat(state, caster.id, "totalDamageDealt", finalDmg);
@@ -1757,11 +1996,22 @@ registerSkillHandler("fz_curse", (caster, state, log) => {
   const target = enemies[Math.floor(Math.random() * enemies.length)];
   const stacks = target._fzMarks || 0;
   const baseRatio = caster.def.skill.damage?.[0]?.atkRatio ?? 1.8;
-  const ratio = baseRatio * (1 + stacks * 0.1);
+  const ratio = baseRatio * (1 + stacks * 0.08);
   const result = calcDamage(caster, target, ratio, "magical" /* Magical */, {
     isSkill: true,
   });
   target.currentHp -= result.finalDamage;
+  addStat(state, caster.id, "totalDamageDealt", result.finalDamage);
+  addStat(state, caster.id, "skillDamage", result.finalDamage);
+  addStat(state, caster.id, "magicalDamage", result.finalDamage);
+  trackSkill(
+    state,
+    caster.id,
+    caster.def.skill.id,
+    caster.def.skill.name,
+    result.finalDamage,
+    "physical"
+  );
   target.lastDamage = {
     value: result.finalDamage,
     time: state.time,
@@ -1796,6 +2046,17 @@ registerSkillHandler("qm_exorcise", (caster, state, log) => {
       { isSkill: true }
     );
     t.currentHp -= r.finalDamage;
+    addStat(state, caster.id, "totalDamageDealt", r.finalDamage);
+    addStat(state, caster.id, "skillDamage", r.finalDamage);
+    addStat(state, caster.id, "pureDamage", r.finalDamage);
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      r.finalDamage,
+      "pure"
+    );
     total += r.finalDamage;
   }
   log.push({
@@ -1840,11 +2101,16 @@ registerSkillHandler("sq_heal", (caster, state, log) => {
     const heal = Math.floor(
       caster.currentAttack * (caster.def.skill.heal?.atkRatio ?? 2) * mult
     );
+    caster.lastHealTarget = t.id;
+    t.lastHeal = { value: heal, time: state.time };
+    addStat(state, caster.id, "totalHealingDone", heal);
+    addStat(state, caster.id, "totalHealing", heal);
+    addStat(state, t.id, "totalHealingReceived", heal);
     t.currentHp = Math.min(t.maxHp, t.currentHp + heal);
-    t._sqShieldUntil = state.time + 8;
+    t._sqShieldUntil = state.time + 7;
     log.push({
       time: state.time,
-      text: `\u{1F6E1} ${caster.def.name} \u5723\u5149\u6CBB\u6108 ${pfx(t)}: +${heal}${hasNeg ? " (\u9A71\u6563+30%)" : ""}`,
+      text: `\u{1F6E1} ${caster.def.name} \u5723\u5149\u6CBB\u6108 ${pfx(t)}: +${heal}${hasNeg ? " (\u9A71\u6563+30%)" : ""} +\u5723\u4E4B\u62A4\u76FE7s`,
       type: "heal",
     });
   }
@@ -1931,6 +2197,17 @@ registerSkillHandler("sqz_combo", (caster, state, log) => {
       isSkill: true,
     });
     target.currentHp -= r.finalDamage;
+    addStat(state, caster.id, "totalDamageDealt", r.finalDamage);
+    addStat(state, caster.id, "skillDamage", r.finalDamage);
+    addStat(state, caster.id, "physicalDamage", r.finalDamage);
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      r.finalDamage,
+      "physical"
+    );
     total += r.finalDamage;
   }
   target.lastHitBy = caster.id;
@@ -1954,6 +2231,17 @@ registerSkillHandler("zq_flame", (caster, state, log) => {
       isSkill: true,
     });
     t.currentHp -= r.finalDamage;
+    addStat(state, caster.id, "totalDamageDealt", r.finalDamage);
+    addStat(state, caster.id, "skillDamage", r.finalDamage);
+    addStat(state, caster.id, "magicalDamage", r.finalDamage);
+    trackSkill(
+      state,
+      caster.id,
+      caster.def.skill.id,
+      caster.def.skill.name,
+      r.finalDamage,
+      "magical"
+    );
     total += r.finalDamage;
     t.statuses.push({
       type: "burn" /* Burn */,
@@ -1976,7 +2264,26 @@ registerSkillHandler("sc_judge", (caster, state, log) => {
   const top = enemies.sort(
     (a, b) => (b._dmgRecent9s || 0) - (a._dmgRecent9s || 0)
   )[0];
-  const hasBuff = (top.statuses || []).length > 0;
+  const NEGATIVE = [
+    "stun",
+    "sleep",
+    "petrify",
+    "freeze",
+    "bind",
+    "burn",
+    "curse",
+    "poison",
+    "doom",
+    "ruin",
+    "silence",
+    "disarm",
+    "slow",
+    "armorBreak",
+    "sc_judge_dot",
+  ];
+  const hasBuff = (top.statuses || []).some(
+    (s) => !NEGATIVE.includes(String(s.type).toLowerCase())
+  );
   const atk = hasBuff ? top.currentAttack : caster.currentAttack;
   top.statuses.push({
     type: "silence" /* Silence */,
@@ -1985,31 +2292,37 @@ registerSkillHandler("sc_judge", (caster, state, log) => {
   });
   top.statuses.push({
     type: "sc_judge_dot",
-    remainingSeconds: 5,
+    remainingSeconds: 4,
     stacks: 1,
-    value: Math.floor(atk * 0.3),
+    value: Math.floor(atk * 0.35),
+    sourceId: caster.id,
+    clearBuffsOnEnd: hasBuff,
   });
-  if (hasBuff) top.statuses = [];
   log.push({
     time: state.time,
-    text: `\u2696 ${caster.def.name} \u5BA1\u5224\u4E4B\u5149 ${pfx(top)}: \u6C89\u9ED8+30%\u7EAF\u7CB9\xD75s${hasBuff ? " (\u589E\u76CA\u6E05\u9664)" : ""}`,
+    text: `\u2696 ${caster.def.name} \u5BA1\u5224\u4E4B\u5149 ${pfx(top)}: \u6C89\u9ED8+35%\u7EAF\u7CB9\xD74s${hasBuff ? " (\u7ED3\u675F\u6E05\u589E\u76CA)" : ""}`,
     type: "control",
   });
 });
 registerSkillHandler("xd_sacrifice", (caster, state, log) => {
-  const cost = Math.floor(caster.currentHp * 0.25);
-  caster.currentHp -= cost;
   const enemies = state.units.filter(
-    (u) => u.team !== caster.team && !u.isDead && u.row !== 2 /* Back */
+    (u) => u.team !== caster.team && !u.isDead
   );
-  const targets = shuffle(enemies).slice(0, 2);
-  for (const t of targets) {
-    t._xdTauntUntil = state.time + 6;
-    t._xdTauntId = caster.id;
-  }
+  if (enemies.length === 0) return;
+  const t = enemies[Math.floor(Math.random() * enemies.length)];
+  t._xdDmgDownUntil = state.time + 4;
+  t._xdDmgDown = 0.2;
+  const defSum = (t.currentPhysicalDef || 0) + (t.currentMagicalDef || 0);
+  t.statuses.push({
+    type: "xd_dot",
+    remainingSeconds: 4,
+    stacks: 1,
+    value: Math.max(1, Math.floor(defSum * 0.2)),
+    sourceId: caster.id,
+  });
   log.push({
     time: state.time,
-    text: `\u271D ${caster.def.name} \u727A\u7272: \u5632\u8BBD${targets.length}\u540D\u654C\u4EBA6s`,
+    text: `\u271D ${caster.def.name} \u727A\u7272: ${t.def.name} \u9020\u6210\u4F24\u5BB3-20% + \u6BCF\u79D2${Math.floor(defSum * 0.2)}\u7EAF\u7CB9\xD74s`,
     type: "control",
   });
 });
@@ -2087,7 +2400,7 @@ var pp = {
   },
   growth: { hp: 140, attack: 6, physicalDef: 3.2, magicalDef: 3 },
   talent:
-    "\u7761\u7720\u65F6\u9A71\u6563\u5F02\u5E38+\u6BCF\u79D2\u56DE2%+Lv\xD70.02%HP",
+    "\u7761\u7720\u65F6\u9A71\u6563\u5F02\u5E38+\u6BCF\u79D2\u56DE1%+Lv\xD70.01%HP\uFF08v3.3 \u56DE\u590D\u51CF\u534A\uFF09",
   skill: {
     id: "pp_sleep",
     name: "\u50AC\u7720",
@@ -2096,7 +2409,7 @@ var pp = {
     cooldown: 12,
     castTime: 0,
     description:
-      "\u4EE4\u81EA\u8EAB\u4E0E\u654C\u4EBA\u540E\u6392\u968F\u673A\u4E00\u540D\u540C\u65F6\u8FDB\u5165\u7761\u77204s(\u540E\u6392\u65E0\u4EBA\u53EA\u5BF9\u81EA\u5DF1)",
+      "\u50AC\u7720: \u968F\u673A\u53D1\u52A81\u4E2A\u6548\u679C\uFF1A\u2460\u81EA\u8EAB\u4E0E\u968F\u673A1\u540D\u654C\u4EBA(\u4F18\u5148\u540E\u6392)\u540C\u77614s \u2461\u81EA\u8EAB\u77615s+\u968F\u673A2\u540D\u654C\u4EBA\u56F0\u610F6s\u547D\u4E2D\u7387-75%",
     scriptId: "pp_sleep",
   },
 };
@@ -2113,7 +2426,7 @@ var hl = {
   },
   growth: { hp: 90, attack: 9, physicalDef: 4.8, magicalDef: 2.8 },
   talent:
-    "\u5F00\u573A\u6012\u543C: \u654C\u65B9\u5168\u4F53\u653B\u51FB-20%\u6301\u7EED8s",
+    "\u5F00\u573A\u6012\u543C: \u654C\u65B9\u5168\u4F53\u653B\u51FB-30%\u6301\u7EED5s\uFF0C\u4E4B\u540E-15%\u6301\u7EED8s",
   skill: {
     id: "hl_rage",
     name: "\u6FC0\u6012",
@@ -2121,7 +2434,7 @@ var hl = {
     cooldown: 999,
     castTime: 0,
     description:
-      "\u9996\u6B21HP<25%\u65F6\uFF0C\u63D0\u534735%\u653B\u51FB+20%\u653B\u901F\uFF0C\u514D\u75AB\u5F02\u5E38\u81F3\u6218\u6597\u7ED3\u675F",
+      "\u6FC0\u6012: \u81EA\u8EABHP\u9996\u6B21\u964D\u81F360%\u8FDB\u5165\u6FC0\u6012\uFF0C\u6BCF3s\u5931\u53BB2%\u6700\u5927HP\uFF0C\u83B7\u5F9720%\u51CF\u4F24+30%\u653B+50%\u653B\u901F\uFF0C\u514D\u75AB\u5F02\u5E38\u81F3\u6218\u6597\u7ED3\u675F(\u6BCF\u573A\u4E00\u6B21)",
   },
 };
 var yl = {
@@ -2142,12 +2455,12 @@ var yl = {
     id: "yl_stealth",
     name: "\u6F5C\u884C",
     tags: ["\u5207\u5165"],
-    cooldown: 6,
+    cooldown: 7,
     castTime: 0,
     description:
-      "\u6F5C\u884C(\u4EC5\u514D\u75AB\u666E\u653B\uFF0C\u53EF\u88AB\u6280\u80FD\u9009\u4E2D\uFF0C\u65E0\u56DE\u8840)\uFF0C\u4E0B\u6B21\u653B\u51FB2.0\u500D+40%\u5438\u8840\uFF0C\u4F18\u5148\u540E\u6392",
+      "\u6F5C\u884C: \u65E0\u6CD5\u88AB\u666E\u653B\u9009\u4E2D(\u6280\u80FD\u53EF\u9009)\u3001\u671F\u95F4\u4E0D\u56DE\u8840\uFF1B\u653B\u51FB240%+50%\u5438\u8840\uFF0C\u4F18\u5148\u540E\u6392(\u524D10/\u4E2D40/\u540E50)\uFF0C\u653B\u51FB\u540E\u89E3\u9664",
     // v2.36: 2.1→1.9
-    damage: [{ type: "physical" /* Physical */, atkRatio: 2 }],
+    damage: [{ type: "physical" /* Physical */, atkRatio: 2.4 }],
     priority: [
       { row: 2 /* Back */, chance: 50 },
       { row: 1 /* Mid */, chance: 40 },
@@ -2177,10 +2490,10 @@ var hx = {
     cooldown: 5,
     castTime: 0,
     description:
-      "\u5BF9\u968F\u673A2\u540D\u5404\u9020\u6210230-260%\u4F24\u5BB3\uFF0C\u4F18\u5148\u540E\u6392",
-    // v3.3: 210-240→225-255%
-    damage: [{ type: "physical" /* Physical */, atkRatio: 2.45 }],
-    // P0: 特判2.3-2.6覆盖
+      "\u5BF9\u968F\u673A2\u540D\u5404\u9020\u6210210-240%\u4F24\u5BB3\uFF0C\u4F18\u5148\u540E\u6392",
+    // v3.4 R3 用户直发
+    damage: [{ type: "physical" /* Physical */, atkRatio: 2.25 }],
+    // R3: 区间中值兜底，handler 覆盖
     aoe: { maxTargets: 2 },
     priority: [
       { row: 2 /* Back */, chance: 60 },
@@ -2202,15 +2515,15 @@ var zzx = {
   },
   growth: { hp: 50, attack: 5, physicalDef: 2.5, magicalDef: 4.5 },
   talent:
-    "\u5F00\u573A\u5C01\u9501\u654C\u65B9\u540C\u9635\u578B\u89D2\u8272\u7684\u5929\u8D4B\u4E0E\u6280\u80FD8s",
+    "\u6218\u6597\u5F00\u59CB\uFF0C\u4F7F\u654C\u65B9\u540C\u9635\u578B\u4F4D\u7F6E\u6240\u6709\u654C\u4EBA\u524D7s\u5929\u8D4B\u4E0E\u6280\u80FD\u7981\u7528\u5E76\u5931\u6548\uFF08\u4E0D\u89C6\u4E3A\u5F02\u5E38\uFF0C\u65E0\u6CD5\u9A71\u6563\uFF09",
   skill: {
     id: "zzx_buff",
     name: "\u9F13\u821E",
     tags: ["\u589E\u76CA"],
-    cooldown: 9,
+    cooldown: 8,
     castTime: 0,
     description:
-      "\u4F7F\u4E00\u540D\u53CB\u65B9\uFF08\u4F18\u5148\u517D\u65CF\uFF09\u63D0\u534735%\u653B\u51FB\u529B5s+\u81EA\u8EAB\u4E0E\u76EE\u6807\u7269\u51CF15%\u9B54\u51CF25%\u6301\u7EED7s",
+      "\u4F7F\u81EA\u8EAB\u4EE5\u59161\u540D\u968F\u673A\u53CB\u65B9(\u4F18\u5148\u517D\u65CF)+25%\u653B7s\uFF1B\u81EA\u8EAB\u4E0E\u76EE\u6807\u83B7\u5F9710%\u7269\u7406\u51CF\u4F24+20%\u9B54\u6CD5\u51CF\u4F247s",
     scriptId: "zzx_buff",
   },
 };
@@ -2227,16 +2540,16 @@ var dxm = {
   },
   growth: { hp: 80, attack: 6, physicalDef: 2.5, magicalDef: 2.4 },
   talent:
-    "\u540C\u9635\u578B\u53CB\u65B9\u6280\u80FDCD-18%(\u542B\u81EA\u8EAB)",
+    "\u6240\u6709\u53CB\u65B9\u89D2\u8272\u6280\u80FD\u51B7\u5374\u51CF\u5C1112%\uFF08\u542B\u81EA\u8EAB\uFF09",
   skill: {
     id: "dxm_heal",
     name: "\u6CBB\u6108",
     tags: ["\u6CBB\u7597"],
-    cooldown: 7,
+    cooldown: 6,
     castTime: 0,
     description:
-      "\u6CBB\u7597\u6700\u4F4E\u8840\u91CF\u53CB\u65B9\uFF08\u4F18\u5148\u517D\u65CF\uFF09\uFF1A6\xD7\u7B49\u7EA7+\u653B\u51FB\xD7185%(\u7B2C4\u6B21+90%+\u9A71\u6563)",
-    heal: { fixedAdd: 600, atkRatio: 1.85 },
+      "\u6CBB\u7597\u6211\u65B9\u6700\u4F4E\u8840\u91CF1\u540D(\u4F18\u5148\u517D\u65CF)\uFF1A7\xD7\u7B49\u7EA7+\u653B\u51FB\xD7190%\uFF1B\u6BCF\u53D1\u52A82\u6B21\uFF0C\u4E0B\u6B21\u6CBB\u7597+50%\u5E76\u9A71\u6563",
+    heal: { fixedAdd: 600, atkRatio: 2.25 },
   },
 };
 var lbmx = {
@@ -2252,7 +2565,7 @@ var lbmx = {
   },
   growth: { hp: 80, attack: 7.5, physicalDef: 3.8, magicalDef: 2.2 },
   talent:
-    "\u5F00\u573A\u5486\u54EE\u5632\u8BBD\u654C\u65B9\u524D\u63925s(\u7981\u6280\u80FD,\u6BCF\u573A\u4E00\u6B21)",
+    "\u5F00\u573A\u5486\u54EE: \u5632\u8BBD\u654C\u65B9\u968F\u673A3\u540D\u5F3A\u5236\u653B\u51FB\u81EA\u8EAB4s\uFF0C\u671F\u95F4\u654C\u65B9\u65E0\u6CD5\u4F7F\u7528\u6280\u80FD(\u6BCF\u573A\u4E00\u6B21)",
   skill: {
     id: "lbmx_smash",
     name: "\u62CD\u51FB",
@@ -2260,9 +2573,9 @@ var lbmx = {
     cooldown: 8,
     castTime: 0,
     description:
-      "\u524D\u4E2D\u6392\u5168\u4F53\u653B\u51FB\xD7225%\u7269\u7406+\u964D20%\u653B\u901F5s\uFF08\u540E\u6392-40%\u4F24\u5BB3\uFF09",
-    // v3.3: 215→225%
-    damage: [{ type: "physical" /* Physical */, atkRatio: 2.25 }],
+      "\u62CD\u51FB\u5730\u9762: \u968F\u673A1\u6392\u5168\u4F53\u653B\u51FB\xD7200%\u7269\u7406+\u964D20%\u7269\u96326s\uFF08\u4F18\u5148\u524D\u4E2D\u6392\uFF0C\u540E\u6392-35%\uFF0C\u547D\u4E2D3\u4EBA-35%\uFF09",
+    // v3.16f 回滚: 文档220%, // v3.3: 215→225%
+    damage: [{ type: "physical" /* Physical */, atkRatio: 2 }],
     aoe: { rows: [0 /* Front */, 1 /* Mid */], maxTargets: 6 },
   },
 };
@@ -2279,19 +2592,19 @@ var mmx = {
   },
   growth: { hp: 100, attack: 7, physicalDef: 4.9, magicalDef: 3.4 },
   talent:
-    "\u6BCF7s\u8FDB\u5165\u5377\u66F2\u72B6\u6001\u6301\u7EED4s: \u653B-20%\u9632+50%",
+    "\u6BCF\u95F4\u969412s\u8FDB\u5165\u5377\u66F26s: \u653B-20% \u9632+40%\uFF0C\u989D\u5916\u683C\u6321\u81EA\u8EAB\u9632\u5FA1\u603B\u548C\xD720%\u7684\u6280\u80FD\u4F24\u5BB3",
   skill: {
     id: "mmx_stomp",
     name: "\u8E29\u8E0F",
     tags: ["\u5207\u5165"],
     // v3.0
-    cooldown: 8,
+    cooldown: 10,
     castTime: 1,
     description:
-      "125%\u653B\u51FB\u7269\u7406+\u81EA\u8EAB\u9632\u5FA1\xD72.5\u7EAF\u7CB9\uFF08\u524D\u6392+20%\uFF0C\u540E\u6392\u7F34\u68B03s\uFF09",
+      "\u8E29\u8E0F1\u540D\u654C\u4EBA: 75%\u653B\u51FB\u7269\u7406+\u81EA\u8EAB\u9632\u5FA1\xD72\u7EAF\u7CB9\uFF08\u524D\u6392+25%\uFF0C\u540E\u6392\u7F34\u68B03s\uFF09",
     // v3.2: 110→125%
     damage: [
-      { type: "physical" /* Physical */, atkRatio: 1.25 },
+      { type: "physical" /* Physical */, atkRatio: 0.75 },
       { type: "pure" /* Pure */, selfDefMultiplier: 2.5 },
     ],
   },
@@ -2310,20 +2623,19 @@ var sszs = {
   },
   growth: { hp: 65, attack: 8.2, physicalDef: 2, magicalDef: 1.8 },
   talent:
-    "\u83B7\u5F97 30%+\u7B49\u7EA7\xD70.1%\u7684\u95EA\u907F\u6548\u679C\uFF08100\u7EA7\uFF1A40%\uFF09\uFF0C\u88AB #\u5207\u5165 \u6280\u80FD\u9009\u4E2D\u65F6\u6709 10%\u51E0\u7387\u95EA\u907F\u90A3\u6B21\u6280\u80FD",
+    "\u83B7\u5F9730%+\u7B49\u7EA7\xD70.1%\u95EA\u907F(100\u7EA740%)\uFF1B\u6BCF\u7D2F\u8BA1\u53D72\u6B21#\u5207\u5165\u6280\u80FD\uFF0C\u4E0B\u6B21#\u5207\u5165\u6280\u80FD100%\u95EA\u907F",
   // v3.0 重做
   skill: {
     id: "sszs_bind",
     name: "\u675F\u7F1A\u5C04\u51FB",
     tags: ["\u63A7\u5236"],
-    cooldown: 6,
+    cooldown: 5,
     castTime: 0,
-    description: "\u653B\u51FB\xD7190%\u7269\u7406+\u675F\u7F1A3s",
-    // v3.6: 220→190%
-    damage: [{ type: "physical" /* Physical */, atkRatio: 1.9 }],
-    // P0修复: 2.55→1.9
-    effects: [{ type: "bind" /* Bind */, duration: 3 }],
-    // v3.0: 2→3s
+    description:
+      "\u5BF91\u540D\u654C\u65B9\u5C04\u51FB: \u653B\u51FB\xD7270%\u7269\u7406+\u675F\u7F1A4s",
+    // v3.16 用户: 360→280+束缚4s
+    damage: [{ type: "physical" /* Physical */, atkRatio: 2.7 }],
+    effects: [{ type: "bind" /* Bind */, duration: 4 }],
   },
 };
 var bslr = {
@@ -2340,17 +2652,17 @@ var bslr = {
   },
   growth: { hp: 60, attack: 9, physicalDef: 2, magicalDef: 2 },
   talent:
-    "\u81EA\u8EAB\u9020\u6210\u4F24\u5BB3\u6709 35%\u51E0\u7387\u65E0\u89C6\u76EE\u6807\u7684\u57FA\u7840\u9632\u5FA1\uFF0C\u8FD8\u6709 25%\u51E0\u7387\u4F7F\u76EE\u6807\u53D7\u5230\u6CBB\u7597\u6548\u679C-60%\uFF0C\u6301\u7EED 4 s\u3002\u5982\u679C\u81EA\u8EAB\u53D7\u5230\u653B\u51FB\u8FD9\u4E2A\u5929\u8D4B\u4F1A\u6682\u65F6\u5931\u6548 2 s",
-  // v3.0,
+    "\u9020\u6210\u4F24\u5BB337.5%\u51E0\u7387\u65E0\u89C6\u989D\u5916\u9632\u5FA1\u5E76\u964D\u4F4E\u76EE\u680725%\u53D7\u75972s\uFF1B\u81EA\u8EAB\u53D7\u653B\u51FB\u65F6\u5929\u8D4B\u6682\u5931\u65481s\uFF08\u6280\u80FD\u89C6\u4E3A\u653B\u51FB\uFF0C\u51E0\u738740%\uFF09",
+  // v3.4
   skill: {
     id: "bslr_shot",
     name: "\u6301\u7EED\u5C04\u51FB",
     tags: [],
-    cooldown: 8,
+    cooldown: 7,
     castTime: 0,
     description:
-      "\u5BF91\u6392\u654C\u4EBA\u6301\u7EED\u5C04\u51FB3s\uFF0C\u6BCF\u79D2\u653B\u51FB\xD775%\uFF0C\u6BCF\u6B21\u964D6%\u653B\u901F\uFF08\u53E03\u5C42\uFF09",
-    damage: [{ type: "physical" /* Physical */, atkRatio: 0.75 }],
+      "\u5BF9\u654C\u65B91\u6392\u6301\u7EED\u5C04\u51FB1.5s\uFF0C\u6BCF0.5\u79D2\u653B\u51FB\xD790%\u7269\u7406\uFF1B\u6BCF\u6B21\u964D10%\u653B\u621620%\u653B\u901F4s(\u6700\u591A3\u5C42)",
+    damage: [{ type: "physical" /* Physical */, atkRatio: 0.9 }],
     aoe: { maxTargets: 3 },
     scriptId: "bslr_shot",
   },
@@ -2369,7 +2681,7 @@ var hqs = {
   },
   growth: { hp: 75, attack: 8.6, physicalDef: 2, magicalDef: 2 },
   talent:
-    "\u81EA\u8EAB\u88AB #\u5207\u5165 \u6280\u80FD\u9009\u4E2D\u4E3A\u76EE\u6807\u65F6\u63D0\u5347\u81EA\u8EAB 30%+\u7B49\u7EA7\xD70.4%\u7684\u9632\u5FA1\u529B\u4E0E 15%+\u7B49\u7EA7\xD70.1%\u7684\u653B\u51FB\u529B,\u6301\u7EED 5 s(\u53EF\u53E0\u52A0\uFF0C\u8FD9\u4E2A\u6548\u679C\u4F18\u5148\u4E8E #\u5207\u5165 \u6280\u80FD\u751F\u6548)",
+    "\u81EA\u8EAB\u65E0\u6CD5\u88AB#\u5207\u5165\u6280\u80FD\u9009\u4E3A\u5BF9\u8C61\uFF0C\u53D7\u5230#\u5207\u5165\u6280\u80FD\u4F24\u5BB3\u4E3A0\uFF0C\u81EA\u8EAB\u5BF9\u540E\u6392\u654C\u4EBA\u4F24\u5BB3+10%",
   // v3.0,
   skill: {
     id: "hqs_snipe",
@@ -2378,12 +2690,12 @@ var hqs = {
     cooldown: 10,
     castTime: 2.5,
     description:
-      "\u7269\u9632\u6700\u9AD8\u654C\u4EBA\uFF1A\u7269\u9632\xD74\u7EAF\u7CB9+\u653B\u51FB\xD7150%\u7269\u7406",
-    // v2.31 加强: 170→180%
+      "\u7269\u9632\u6700\u9AD8\u654C\u4EBA\uFF1A\u7269\u9632\xD74\u7EAF\u7CB9+\u653B\u51FB\xD7300%\u7269\u7406",
+    // v3.16 用户: 320→300
     damage: [
       { type: "pure" /* Pure */, defMultiplier: 4 },
-      { type: "physical" /* Physical */, atkRatio: 1.5 },
-      // P0修复,
+      { type: "physical" /* Physical */, atkRatio: 3 },
+      // v3.16
     ],
   },
 };
@@ -2401,7 +2713,7 @@ var mds = {
   },
   growth: { hp: 80, attack: 8, physicalDef: 2.3, magicalDef: 2.5 },
   talent:
-    "\u81EA\u8EAB\u653B\u51FB\u529B-15%,\u4F1A\u540C\u65F6\u5BF9 2 \u540D\u654C\u4EBA\u53D1\u52A8\u653B\u51FB,\u81EA\u8EAB\u5BF9\u5904\u4E8E[\u675F\u7F1A]\u72B6\u6001\u7684\u654C\u4EBA\u653B\u51FB\u6709 35%+\u7B49\u7EA7\xD70.1%\u51E0\u7387\u4F7F\u5176[\u77F3\u5316]2 s",
+    "\u81EA\u8EAB\u653B-12%\uFF0C\u540C\u65F6\u653B\u51FB2\u540D\u654C\u4EBA\uFF1B\u6BCF\u653B\u51FB2\u6B21\uFF0C\u4E0B\u6B2160%\u675F\u7F1A4s / 40%\u77F3\u53162s",
   skill: {
     id: "mds_skill",
     name: "\u77F3\u5316\u51DD\u89C6",
@@ -2409,10 +2721,10 @@ var mds = {
     cooldown: 8,
     castTime: 0,
     description:
-      "\u524D\u4E2D\u540E\u54041\u540D\u654C\u4EBA\uFF1A\u653B\u51FB\xD7135%\u9B54\u6CD5+\u675F\u7F1A4s",
-    // v2.35: 160→165%
-    damage: [{ type: "magical" /* Magical */, atkRatio: 1.35 }],
-    effects: [{ type: "bind" /* Bind */, duration: 4 }],
+      "\u524D\u4E2D\u540E\u6392\u54041\u540D\u654C\u4EBA: \u653B\u51FB\xD7135%\u7EAF\u7CB9+\u77F3\u53163s\uFF0C\u81EA\u8EAB\u6062\u590D30%\u4F24\u5BB3\u8840\u91CF",
+    // v3.16 用户: 280魔法+束缚→135纯粹+石化
+    damage: [{ type: "pure" /* Pure */, atkRatio: 1.35 }],
+    effects: [{ type: "petrify" /* Petrify */, duration: 3 }],
     scriptId: "mds_skill",
   },
 };
@@ -2430,7 +2742,7 @@ var zfyx = {
   },
   growth: { hp: 75, attack: 9.5, physicalDef: 2.5, magicalDef: 2 },
   talent:
-    "\u654C\u65B9\u53D1\u52A8\u5E26\u6709 #\u5207\u5165 \u6807\u7B7E\u7684\u6280\u80FD\u4F24\u5BB3-35%\uFF0C\u540C\u65F6\u654C\u65B9\u6BCF\u6B21\u53D1\u52A8 #\u5207\u5165 \u6807\u7B7E\u6280\u80FD\uFF0C\u6211\u65B9\u573A\u4E0A\u6240\u6709\u5355\u4F4D\u63D0\u5347 10%\u653B\u51FB\u529B\uFF0C\u6301\u7EED 6 s\uFF08\u6700\u5927\u53E0\u52A0 4 \u5C42\uFF09",
+    "\u654C\u65B9\u6BCF\u6B21\u53D1\u52A8#\u5207\u5165\u6280\u80FD\uFF0C\u654C\u4EBA\u5148\u53D735%\u4F24\u5BB3\uFF0C\u6211\u65B9\u5168\u4F53+10%\u653B9s(\u6700\u591A4\u5C42)",
   // v3.0 重做,
   skill: {
     id: "zfyx_arrow",
@@ -2439,8 +2751,9 @@ var zfyx = {
     cooldown: 8,
     castTime: 0,
     description:
-      "\u53D1\u5C043\u679A\u5F13\u7BAD\uFF0C\u6BCF\u6B21\u653B\u51FB\xD790%\u968F\u673A\u654C\u4EBA\uFF0C\u53D1\u5C04\u540E\u968F\u673A\u79FB\u52A8\u81F3\u7A7A\u4F4D",
-    damage: [{ type: "physical" /* Physical */, atkRatio: 0.9 }],
+      "\u53D1\u5C043\u679A\u5F13\u7BAD\uFF0C\u6BCF\u6B21\u653B\u51FB\xD7125%\u968F\u673A\u654C\u4EBA\uFF1B\u6BCF\u6B21\u53D1\u5C04\u540E\u79FB\u52A8\u81F3\u7A7A\u4F4D+\u95EA\u907F40% 5s",
+    // v3.16f 回滚: 文档110%
+    damage: [{ type: "physical" /* Physical */, atkRatio: 1.25 }],
     aoe: { maxTargets: 3 },
   },
 };
@@ -2458,16 +2771,17 @@ var lxgz = {
   },
   growth: { hp: 80, attack: 8, physicalDef: 2.4, magicalDef: 2.2 },
   talent:
-    "\u81EA\u8EAB\u53D1\u52A8\u6CBB\u7597\u6280\u80FD\u65F6,\u4F1A\u4F7F\u53D7\u6CBB\u7597\u7684\u76EE\u6807\u83B7\u5F97 [\u6FC0\u6602] \u6548\u679C:\u63D0\u5347 10%+\u7B49\u7EA7\xD70.1%\u7684\u653B\u51FB\u529B\u4E0E 12% \u653B\u51FB\u901F\u5EA6,\u6301\u7EED 5 \u79D2\u3002\uFF08100\u7EA7\uFF1A20%\u653B\u51FB\u63D0\u5347\uFF09",
+    "\u81EA\u8EAB\u6CBB\u7597\u6216\u653B\u51FB\uFF0C\u4F7F\u6211\u65B9\u968F\u673A1\u540D\u83B7\u5F97[\u6FC0\u6602]: +10%+\u7B49\u7EA7\xD70.1%\u653B\u4E0E15%\u653B\u901F\uFF0C\u6301\u7EED5s",
   skill: {
     id: "lxgz_heal",
     name: "\u6CBB\u6108\u7434\u97F3",
     tags: ["\u6CBB\u7597"],
-    cooldown: 11,
+    cooldown: 8,
     castTime: 2,
     description:
-      "\u5F39\u594F2s\u2192\u6700\u4F4E2\u540D\u53CB\u65B9\u6301\u7EED\u6062\u590D5s\uFF0C\u6BCF\u79D2\u653B\u51FB\xD725%+\u5DF2\u635F\u751F\u547D\xD78%",
-    heal: { atkRatio: 0.25, targetLostHpRatio: 0.08 },
+      "\u5F39\u594F2s\u2192\u6700\u4F4E2\u540D\u53CB\u65B9\u6301\u7EED\u6062\u590D+15%\u51CF\u4F246s\uFF0C\u6BCF\u79D2\u81EA\u8EAB\u653B\xD725%+\u76EE\u6807\u653B\xD720%",
+    // v3.16 用户
+    heal: { atkRatio: 0.25, targetAtkRatio: 0.15 },
     aoe: { maxTargets: 2 },
   },
 };
@@ -2484,7 +2798,7 @@ var crzs = {
   },
   growth: { hp: 75, attack: 8.5, physicalDef: 2.5, magicalDef: 2 },
   talent:
-    "\u81EA\u8EAB\u6BCF\u79D2\u5931\u53BB\u6700\u5927\u751F\u547D\u503C\xD71%\u7684\u8840\u91CF,\u53D7\u5230\u4F24\u5BB3+10%\uFF0C\u5BF9\u654C\u65B9\u540C\u9635\u578B\u7684\u6240\u6709\u654C\u65B9\u89D2\u8272\u9020\u6210\u6BCF\u79D2\u81EA\u8EAB\u653B\u51FB\u529B\xD71.5%+\u7B49\u7EA7\xD70.02%\u7684\u7EAF\u7CB9\u4F24\u5BB3\uFF08100\u7EA7\uFF1A\u653B\u51FB\u529B\xD73.5%\uFF09",
+    "\u6BCF\u79D2\u5931\u53BB1%\u6700\u5927HP\uFF0C\u53D7\u4F24+10%\uFF0C\u53D7\u7597+20%\uFF1B\u5BF9\u654C\u65B9\u540C\u9635\u578B\u5168\u4F53\u6BCF\u79D2\u9020\u6210\u653B\u51FB\xD71.5%+\u7B49\u7EA7\xD70.02%\u7EAF\u7CB9(100\u7EA73.5%)",
   skill: {
     id: "crzs_punch",
     name: "\u707C\u70ED\u62F3\u51FB",
@@ -2492,8 +2806,8 @@ var crzs = {
     cooldown: 4,
     castTime: 0,
     description:
-      "\u653B\u51FB\xD7220%\u7269\u7406+\u707C\u70E73s\uFF0C\u81EA\u53D715%\u53CD\u4F24\uFF08\u654C\u65B9\u524D\xB7\u4E2D\u6392\u6709\u89D2\u8272\u65F6\uFF0C\u4E0D\u4F1A\u5BF9\u540E\u6392\u53D1\u52A8\uFF09",
-    // v3.0, // v2.13b 加强: 200%→220%
+      "\u653B\u51FB\xD7220%\u7269\u7406+\u707C\u70E73s\uFF0C\u81EA\u53D710%\u53CD\u4F24\uFF08\u654C\u65B9\u524D\xB7\u4E2D\u6392\u6709\u89D2\u8272\u65F6\u4E0D\u4F1A\u5BF9\u540E\u6392\u53D1\u52A8\uFF09",
+    // v3.16 用户: 200→220
     damage: [{ type: "physical" /* Physical */, atkRatio: 2.2 }],
     effects: [{ type: "burn" /* Burn */, duration: 3, value: 0.05 }],
   },
@@ -2511,18 +2825,18 @@ var hd = {
   },
   growth: { hp: 70, attack: 9, physicalDef: 2.4, magicalDef: 1.8 },
   talent:
-    "\u81EA\u8EAB\u653B\u51FB\u529B+15%,\u547D\u4E2D\u7387-15%,\u81EA\u8EAB\u653B\u51FB\u5982\u679C\u6CA1\u6709\u547D\u4E2D,\u4F1A\u53D7\u5230 50%\u7684\u53CD\u4F24",
+    "\u653B\u51FB+10%\uFF0C\u9B54\u6CD5\u9632\u5FA1+20%\uFF0C\u547D\u4E2D\u7387-15%\uFF1B\u653B\u51FB\u672A\u547D\u4E2D\u53D7\u523050%\u53CD\u4F24",
   skill: {
     id: "hd_slash",
     name: "\u65A9\u51FB",
     tags: ["\u8303\u56F4"],
     // P2修复
-    cooldown: 8,
+    cooldown: 7,
     castTime: 1.5,
     description:
-      "\u968F\u673A1\u6392\u5168\u4F53\uFF1A\u653B\u51FB\xD7270%\u7269\u7406",
-    // v2.67: 310→270% (回调)
-    damage: [{ type: "physical" /* Physical */, atkRatio: 2.7 }],
+      "\u968F\u673A1\u6392\u5168\u4F53: \u653B\u51FB\xD7250%\u7269\u7406\uFF08\u547D\u4E2D3\u4EBA-35%\uFF09",
+    // v3.16 用户: 270→250+命中惩罚
+    damage: [{ type: "physical" /* Physical */, atkRatio: 2.5 }],
     aoe: { maxTargets: 3 },
   },
 };
@@ -2539,7 +2853,7 @@ var fxz = {
   },
   growth: { hp: 85, attack: 6.5, physicalDef: 2.5, magicalDef: 2.5 },
   talent:
-    "\u6218\u6597\u5F00\u59CB\u6807\u8BB0\u654C\u4EBA\u4E0E\u81EA\u8EAB\u5BF9\u79F0\u7684\u4E00\u540D\u89D2\u8272,\u88AB\u6807\u8BB0\u7684\u89D2\u8272\u95EA\u907F\xB7\u989D\u5916\u9632\u5FA1\u59CB\u7EC8\u91CD\u7F6E\u4E3A0\uFF0C\u76F4\u5230\u5206\u6790\u8005\u9635\u4EA1\u3002",
+    "\u6807\u8BB0\u654C\u4EBA\u4E0E\u81EA\u8EAB\u5BF9\u79F0\u76841\u540D\u89D2\u8272\uFF0C\u5176\u95EA\u907F/\u989D\u5916\u9632\u5FA1\u5F520\u76F4\u5230\u5206\u6790\u8005\u9635\u4EA1\uFF1B\u4E4B\u540E\u6BCF35s\u53EF\u5206\u6790\u53E6\u4E00\u540D",
   // v3.0,
   skill: {
     id: "fxz_analyze",
@@ -2548,7 +2862,8 @@ var fxz = {
     cooldown: 6,
     castTime: 0,
     description:
-      "\u63D0\u53473\u540D\u53CB\u65B9\u6700\u4F4E\u9632\u5FA1\u98795%\u9632\u5FA1\u529B\uFF0C\u53EF\u53E010\u6B21",
+      "\u63D0\u5347\u81EA\u8EAB\u53CA2\u540D\u968F\u673A\u53CB\u65B9\u6700\u4F4E\u4E00\u9879\u9632\u5FA16%\uFF0C\u6301\u7EED30s\uFF0C\u6700\u591A\u53E010\u6B21\u5E76\u91CD\u7F6E\u6301\u7EED\u65F6\u95F4",
+    // v3.16 用户: 5→6,
     scriptId: "fxz_analyze",
   },
 };
@@ -2570,12 +2885,12 @@ var fdzs = {
     id: "fdzs_combo",
     name: "\u75BE\u98CE\u8FDE\u51FB",
     tags: [],
-    cooldown: 8,
-    castTime: 2,
+    cooldown: 6,
+    castTime: 1.5,
     description:
-      "2s\u51856\u6B21\u5FEB\u901F\u653B\u51FB\uFF0C\u6BCF\u6B21\u653B\u51FB\xD7115%\u4E14\u65E0\u89C6\u57FA\u7840\u9632\u5FA1",
-    // v3.1: 110→115%
-    damage: [{ type: "physical" /* Physical */, atkRatio: 1.15 }],
+      "1.5s\u51855\u6B21\u5FEB\u901F\u653B\u51FB\uFF0C\u6BCF\u6B21\u653B\u51FB\u76EE\u6807\u968F\u673A\uFF0C\u653B\u51FB\xD765%\u4E14\u65E0\u89C6\u989D\u5916\u9632\u5FA1",
+    // v3.4 用户直发
+    damage: [{ type: "physical" /* Physical */, atkRatio: 0.65 }],
     aoe: { maxTargets: 1 },
     scriptId: "fdzs_combo",
   },
@@ -2593,17 +2908,17 @@ var kzs = {
   },
   growth: { hp: 58, attack: 5.7, physicalDef: 1.6, magicalDef: 1.2 },
   talent:
-    "\u81EA\u8EAB\u6BCF\u635F\u5931 12% \u6700\u5927\u751F\u547D\u503C,\u63D0\u5347 4%+\u7B49\u7EA7\xD70.08% \u7684\u653B\u51FB\u529B,\u4E0E6%\u4F24\u5BB3\u51CF\u514D,\u6700\u591A\u53E0\u52A0 5 \u5C42(\u5373\u635F\u5931 60% \u751F\u547D\u65F6\u8FBE\u5230\u6700\u5927)\u3002",
+    "\u6BCF\u635F\u593112%\u6700\u5927HP\uFF0C\u63D0\u53473%+\u7B49\u7EA7\xD70.05%\u653B\u4E0E8%\u51CF\u4F24\uFF0C\u6700\u591A5\u5C42",
   skill: {
     id: "kzs_rage",
     name: "\u8840\u6012",
     tags: ["\u589E\u76CA"],
-    cooldown: 11,
+    cooldown: 10,
     castTime: 0,
     description:
-      "\u6D88\u801710%\u5F53\u524DHP\u21926s\u5185\u653B\u901F+40%\uFF0C\u6BCF\u6B21\u653B\u51FB\u9644\u52A0\u76EE\u6807\u5F53\u524DHP\xD75%\u7EAF\u7CB9",
-    // 审阅修复: 3→5%
-    effects: [{ type: "bloodrage" /* Bloodrage */, duration: 6 }],
+      "\u6D88\u801710%\u5F53\u524DHP\u8FDB\u5165\u55DC\u8840: 7s\u5185\u653B\u901F+80%\uFF0C\u6BCF\u6B21\u653B\u51FB\u9644\u52A0\u76EE\u6807\u5F53\u524DHP\xD75%\u7EAF\u7CB9",
+    // v3.16 用户: 40→60, // 审阅修复: 3→5%
+    effects: [{ type: "bloodrage" /* Bloodrage */, duration: 7 }],
   },
 };
 var slzs = {
@@ -2619,16 +2934,16 @@ var slzs = {
   },
   growth: { hp: 90, attack: 7.5, physicalDef: 2, magicalDef: 3.5 },
   talent:
-    "\u6BCF\u6B21\u53D7\u5230\u9B54\u6CD5\u4F24\u5BB3\u670950%\u51E0\u7387\u5BF9\u65BD\u6CD5\u8005\u9020\u6210\u81EA\u8EAB\u653B\u51FB\u529B\xD760%+\u7B49\u7EA7\xD70.25%\u7684\u7EAF\u7CB9\u4F24\u5BB3,\u5E76\u4F7F\u5176[\u7729\u6655]1 s\uFF08100\u7EA7\uFF1A\u653B\u51FB\u529B\xD785%\uFF09\uFF1B\u670950%\u4F7F\u90A3\u6B21\u9B54\u6CD5\u4F24\u5BB3-50%\uFF0C\u5E76\u6062\u590D\u81EA\u8EAB\u5468\u56F4\u968F\u673A1\u540D\u53CB\u65B9\u89D2\u8272\u5269\u4F5950%\u4F24\u5BB3\u7684\u751F\u547D\u503C\u3002",
+    "\u6BCF\u6B21\u53D7\u9B54\u6CD5\u4F24\u5BB350%\u51E0\u7387\u5BF9\u65BD\u6CD5\u8005\u9020\u6210\u653B\xD760%+\u7B49\u7EA7\xD70.25%\u7EAF\u7CB9\u5E76\u7729\u66552s\uFF1B50%\u4F7F\u8BE5\u6B21\u9B54\u4F24-50%\u5E76\u6CBB\u7597\u968F\u673A1\u540D\u53CB\u65B9",
   skill: {
     id: "slzs_guard",
     name: "\u5B88\u62A4",
     tags: ["\u589E\u76CA"],
     // v3.0
-    cooldown: 14,
+    cooldown: 13,
     castTime: 0,
     description:
-      "\u6D88\u801710%HP\u2192\u5B88\u62A47s\uFF1A\u653B-30%\u3001\u51CF\u4F24+25%\u3001\u540C\u6392\u53CB\u65B9\u9B54\u4F24\u8F6C\u79FB\u81EA\u8EAB",
+      "\u6D88\u80176%\u6700\u5927HP\u8FDB\u5165\u5B88\u62A48s: \u81EA\u8EAB25%\u51CF\u4F24\u3001\u53D7\u7597+30%\uFF0C\u6211\u65B9\u5168\u4F53\u53CB\u65B9\u53D7\u5230\u9B54\u6CD5\u4F24\u5BB375%\u51E0\u7387\u8F6C\u79FB\u81F3\u81EA\u8EAB",
     scriptId: "slzs_guard",
   },
 };
@@ -2645,7 +2960,7 @@ var zqz = {
   },
   growth: { hp: 56, attack: 10.5, physicalDef: 2.5, magicalDef: 1.8 },
   talent:
-    "\u81EA\u8EAB\u6BCF\u666E\u901A\u653B\u51FB 4 \u6B21,\u4E0B\u6B21\u653B\u51FB\u9644\u5E26 50%\u5438\u8840\u4E0E\u6301\u7EED 6 s \u7684[\u7834\u7532]\u6548\u679C",
+    "\u6BCF\u666E\u901A\u653B\u51FB3\u6B21\uFF0C\u4E0B\u6B21\u653B\u51FB\u9644\u5E2640%\u5438\u8840\u4E0E\u6301\u7EED6s\u7684[\u7834\u7532]",
   skill: {
     id: "zqz_strike",
     name: "\u6BC1\u706D\u6253\u51FB",
@@ -2654,9 +2969,9 @@ var zqz = {
     cooldown: 10,
     castTime: 1,
     description:
-      "\u653B\u51FB\xD7400%\u7269\u7406+\u81EA\u66552s+\u76EE\u6807\u66552s",
-    // v2.40: 390→400%
-    damage: [{ type: "physical" /* Physical */, atkRatio: 4 }],
+      "\u65BD\u6CD51s\uFF0C\u5BF91\u540D\u654C\u65B9\u9020\u6210\u653B\u51FB\xD7440%\u7269\u7406\u5E76\u7729\u66552s\uFF0C\u53D1\u52A8\u540E\u81EA\u8EAB\u4E5F\u7729\u66552s",
+    // v3.16 用户: 340→440
+    damage: [{ type: "physical" /* Physical */, atkRatio: 4.4 }],
     effects: [{ type: "stun" /* Stun */, duration: 2 }],
     interruptOnAttack: true,
     priority: [{ row: 1 /* Mid */, chance: 100 }],
@@ -2675,7 +2990,7 @@ var xdds = {
   },
   growth: { hp: 80, attack: 8.6, physicalDef: 1.8, magicalDef: 3 },
   talent:
-    "\u81EA\u8EAB\u540C\u6392\u7684\u6240\u6709\u53CB\u65B9\u89D2\u8272\u6BCF\u6B21\u53D1\u52A8\u6280\u80FD\u63D0\u5347\u81EA\u8EAB 5%+\u7B49\u7EA7\xD70.03%\u7684\u653B\u51FB\u901F\u5EA6\u4E0E4%\u6280\u80FD\u5438\u8840,\u6301\u7EED 5 s(\u6700\u5927\u53E0\u52A0 5 \u5C42)\uFF08100\u7EA7\uFF1A+8%\u653B\u51FB\u901F\u5EA6\uFF0C4%\u6280\u80FD\u5438\u8840/\u5C42\uFF0C\u6EE1\u5C42\uFF1A+40%\u653B\u51FB\u901F\u5EA6\uFF0C20%\u6280\u80FD\u5438\u8840\uFF09",
+    "\u6211\u65B9\u5168\u4F53\u6CD5\u5E08\u6BCF\u6B21\u6280\u80FD+1\u5C42\u79C0\u9017: \u6BCF\u5C423%+\u7B49\u7EA7\xD70.03%\u653B\u901F+3%\u6280\u80FD\u5438\u8840\uFF0C7s\uFF0C\u6700\u591A7\u5C42",
   skill: {
     id: "xdds_fire",
     name: "\u706B\u7403",
@@ -2683,9 +2998,9 @@ var xdds = {
     cooldown: 7,
     castTime: 1.5,
     description:
-      "\u653B\u51FB\xD7205%\u9B54\u6CD5\uFF0C\u6BCF3\u6B21\u5347\u7EA7\u9668\u77F3(1\u6392+\u653B\u51FB\xD7250%+\u707C\u70E73s)",
-    // v3.9: 215→205%
-    damage: [{ type: "magical" /* Magical */, atkRatio: 2.05 }],
+      "\u5BF91\u540D\u654C\u65B9\u9020\u6210\u653B\u51FB\xD7220%\u9B54\u6CD5\uFF1B\u6BCF2\u6B21\u5347\u7EA7\u9668\u77F3\u8F70\u70B8(1\u6392+\u653B\u51FB\xD7290%+\u707C\u70E73s)\uFF0C\u81EA\u8EAB\u83B7\u5F972\u5C42/4\u5C42\u79C0\u9017",
+    // v3.16 用户: 205/250→230/300, // v3.9: 215→205%
+    damage: [{ type: "magical" /* Magical */, atkRatio: 2.2 }],
     priority: [
       { row: 0 /* Front */, chance: 40 },
       { row: 1 /* Mid */, chance: 35 },
@@ -2707,16 +3022,17 @@ var sjsn = {
   },
   growth: { hp: 70, attack: 7, physicalDef: 1.5, magicalDef: 2.4 },
   talent:
-    "\u4E0E\u81EA\u8EAB\u524D\xB7\u540E\xB7\u5DE6\xB7\u53F3\u5404 1 \u683C\u7684\u53CB\u65B9\u6CD5\u5E08\u89D2\u8272\u6280\u80FD\u51B7\u5374\u51CF\u5C11 15%+\u7B49\u7EA7\xD70.05%(\u5BF9\u81EA\u8EAB\u65E0\u6548)",
+    "\u9664\u81EA\u8EAB\u5916\uFF0C\u53CB\u65B9\u6CD5\u5E08\u6280\u80FD\u51B7\u5374-10%\uFF0C\u6280\u80FD\u5438\u8840+10%",
   skill: {
     id: "sjsn_freeze",
     name: "\u51B0\u5C01",
     tags: ["\u63A7\u5236"],
-    cooldown: 8,
+    cooldown: 7,
     castTime: 0,
     description:
-      "1\u540D\u654C\u65B9\u675F\u7F1A+\u7F34\u68B0+\u6BCF\u79D2\u653B\u51FB\xD790%\u9B54\u6CD5\uFF0C\u6301\u7EED3s",
-    damage: [{ type: "magical" /* Magical */, atkRatio: 0.9 }],
+      "\u4F7F1\u540D\u654C\u65B9\u675F\u7F1A+\u7F34\u68B0+\u6BCF\u79D2\u653B\u51FB\xD780%\u9B54\u6CD5\uFF0C\u6301\u7EED3s\uFF08\u65E0\u89C640%\u9B54\u9632\uFF09",
+    // v3.16 用户: 90→80+无视魔防,
+    damage: [{ type: "magical" /* Magical */, atkRatio: 0.8 }],
     effects: [
       { type: "bind" /* Bind */, duration: 3 },
       { type: "disarm" /* Disarm */, duration: 3 },
@@ -2737,16 +3053,17 @@ var bmxz = {
   },
   growth: { hp: 80, attack: 8, physicalDef: 1.5, magicalDef: 2.8 },
   talent:
-    "\u53CB\u65B9\u5168\u573A\u6CD5\u5E08\u6BCF\u6B21\u5BF9\u654C\u65B9\u65BD\u52A0\u5F02\u5E38\u72B6\u6001,\u4F1A\u4F7F\u81EA\u8EAB\u6280\u80FD\u51CF\u5C11 1 s \u51B7\u5374\u65F6\u95F4\uFF0C\u5E76\u63D0\u5347\u57FA\u7840\u653B\u51FB\u529B\u76840.8%\u7684\u653B\u51FB\u529B\uFF0C\u76F4\u5230\u6218\u6597\u7ED3\u675F\u3002",
+    "\u53CB\u65B9\u5168\u573A\u6CD5\u5E08\u6BCF\u6B21\u6210\u529F\u65BD\u52A0\u5F02\u5E38\u72B6\u6001\uFF0C\u81EA\u8EAB\u6280\u80FD\u51CF\u5C111s\u51B7\u5374\u5E76\u6062\u590D3%\u6700\u5927HP",
   skill: {
     id: "bmxz_charge",
     name: "\u84C4\u529B",
     tags: [],
-    cooldown: 10,
+    cooldown: 9,
     castTime: 0,
     description:
-      "\u968F\u673A\u84C4\u529B1/2/3s\u2192\u524D\u6392/\u524D\u4E2D\u6392/\u5168\u573A\uFF1A\u653B\u51FB\xD7190%\u9B54\u6CD5(\u547D\u4E2D5\u540D-30%)",
-    damage: [{ type: "magical" /* Magical */, atkRatio: 1.9 }],
+      "\u968F\u673A\u84C4\u529B1/2/3s\u2192\u524D\u6392/\u524D\u4E2D\u6392/\u5168\u573A\u51B2\u51FB\u6CE2: \u653B\u51FB\xD7200%\u9B54\u6CD5\uFF08\u547D\u4E2D5\u540D-40%\uFF09",
+    // v3.16 用户,
+    damage: [{ type: "magical" /* Magical */, atkRatio: 2 }],
     aoe: { maxTargets: 9 },
     scriptId: "bmxz_charge",
   },
@@ -2764,7 +3081,7 @@ var srm = {
   },
   growth: { hp: 74, attack: 6.5, physicalDef: 3.2, magicalDef: 2.8 },
   talent:
-    "\u53CB\u65B9\u9635\u4EA1\u2192\u63D0\u534710%\u6700\u5927HP\u4E0A\u9650+\u6062\u590D15%\u6700\u5927HP",
+    "\u81EA\u8EAB\u653B\u51FB\u83B7\u5F9710%\u5438\u8840\uFF1B\u6BCF\u5F53\u53CB\u65B9\u9635\u4EA1\uFF0C\u63D0\u534712%\u6700\u5927HP\u4E0A\u9650\u5E76\u6062\u590D16%\u6700\u5927HP",
   skill: {
     id: "srm_fire",
     name: "\u706B\u7130\u7206\u8F70",
@@ -2772,11 +3089,11 @@ var srm = {
     cooldown: 5,
     castTime: 0,
     description:
-      "\u6D88\u80175%HP\u2192\u653B\u51FB\xD7165%\u9B54\u6CD5+\u7729\u66550.5s(40%2\u6B21/20%3\u6B21)",
-    // v2.36: 160→165%
-    damage: [{ type: "magical" /* Magical */, atkRatio: 1.9 }],
+      "\u6D88\u80173%\u6700\u5927HP\uFF0C\u5BF91\u654C\u9020\u6210\u653B\u51FB\xD7160%+\u5F53\u524D\u8840\u91CF\xD73%\u9B54\u6CD5\u5E76\u7729\u66551s\uFF1B\u6BCF2\u6B21\u53D1\u52A8\u53D82\u500D/3\u500D\u6548\u679C",
+    // v3.16 用户: 165→180+几率重做, // v2.36: 160→165%
+    damage: [{ type: "magical" /* Magical */, atkRatio: 1.6 }],
     // P1: 按文档
-    effects: [{ type: "stun" /* Stun */, duration: 0.5 }],
+    effects: [{ type: "stun" /* Stun */, duration: 1 }],
     scriptId: "srm_fire",
   },
 };
@@ -2799,8 +3116,8 @@ var ynfs = {
     id: "ynfs_annihilate",
     name: "\u6E6E\u706D",
     tags: ["\u63A7\u5236"],
-    cooldown: 10,
-    castTime: 2,
+    cooldown: 9,
+    castTime: 3.5,
     description:
       "2\xD72\u683C\u5B50\uFF1A\u76EE\u6807\u603B\u9632\u5FA1\xB2/350\u7EAF\u7CB9+\u675F\u7F1A4s",
     damage: [{ type: "pure" /* Pure */, defSquaredDiv: 350 }],
@@ -2821,18 +3138,18 @@ var syz = {
   },
   growth: { hp: 70, attack: 8, physicalDef: 2.5, magicalDef: 3 },
   talent:
-    "\u81EA\u8EAB\u6BCF\u6B21\u653B\u51FB\u5BF9\u6211\u65B9\u968F\u673A 1 \u540D\u53CB\u65B9\u89D2\u8272\u63D0\u4F9B\u653B\u51FB\u529B\xD760%\u7684\u6CBB\u7597\u6548\u679C\uFF0880%\u51E0\u7387\u5BF9\u6211\u65B9\u6700\u4F4E\u8840\u91CF\u5355\u4F4D\u53D1\u52A8\uFF09\u81EA\u8EAB\u9635\u4EA1\u65F6\uFF0C\u4E3A\u6211\u65B9\u5168\u573A\u6CD5\u5E08\u89D2\u8272\u63D0\u4F9B\u6BCF\u79D2\u653B\u51FB\u529B\xD780%\u7684\u6CBB\u7597\u4E0E20%\u4F24\u5BB3\u51CF\u514D\uFF0C\u6301\u7EED6s\uFF08\u6BCF\u79D2\u540E\u6CBB\u7597\u6548\u679C\u3001\u4F24\u5BB3\u51CF\u514D+10%\uFF09",
+    "\u6BCF\u6B21\u653B\u51FB\u6CBB\u7597\u6211\u65B9\u968F\u673A1\u540D\u53CB\u65B9\u653B\xD770%(80%\u51E0\u7387\u6700\u4F4E\u8840\u5355\u4F4D)\uFF1B\u9635\u4EA1\u540E\u5168\u573A\u6CD5\u5E0810%\u51CF\u4F24+\u6BCF4s\u5168\u4F53\u6CBB\u7597(\u524D10s 2\u500D)",
   skill: {
     id: "syz_bless",
     name: "\u795E\u4E4B\u5E87\u4F51",
     tags: ["\u589E\u76CA"],
     // v3.0
-    cooldown: 10,
+    cooldown: 9,
     // 审阅修复: 12→10 (文档)
     castTime: 0,
     description:
-      "2\u540D\u6700\u4F4E\u8840\u91CF\u53CB\u65B9\uFF1A\u51CF\u4F2420%+\u5EF6\u8FDF5s\u7ED3\u7B97+\u9A71\u6563\uFF0C\u6301\u7EED5s",
-    effects: [{ type: "inspire" /* Inspire */, duration: 5, value: 0.8 }],
+      "\u6211\u65B9\u6700\u4F4E\u8840\u91CF2\u540D\u53CB\u65B9: \u53D7\u5230\u6CBB\u7597+25%\u3001\u51CF\u4F2420%+\u5EF6\u8FDF5s\u7ED3\u7B97\uFF0C\u6301\u7EED6s",
+    effects: [{ type: "inspire" /* Inspire */, duration: 6, value: 0.8 }],
     // 审阅修复: 7→5
     scriptId: "syz_bless",
   },
@@ -2855,12 +3172,12 @@ var wqqs = {
     id: "wqqs_move",
     name: "\u4EA1\u9B42\u7A81\u88AD",
     tags: ["\u79FB\u52A8"],
-    cooldown: 7,
+    cooldown: 8,
     castTime: 0,
     description:
-      "\u968F\u673A\u79FB\u52A8\u2192\u5BF91\u540D\u654C\u4EBA\u9020\u6210\u653B\u51FB\xD7100%\u7EAF\u7CB9+\u5468\u56F4\u683C\u5B50\u8BC5\u54923s",
-    damage: [{ type: "pure" /* Pure */, atkRatio: 1 }],
-    effects: [{ type: "curse" /* Curse */, duration: 3 }],
+      "\u968F\u673A\u79FB\u52A8\u540E\u5BF91\u540D\u654C\u4EBA\u9020\u6210\u653B\u51FB\xD7110%\u7EAF\u7CB9\uFF0C\u5E76\u4F7F\u5176\u53D7\u5230\u8BC5\u54925s",
+    damage: [{ type: "pure" /* Pure */, atkRatio: 1.1 }],
+    effects: [{ type: "curse" /* Curse */, duration: 5 }],
   },
 };
 var kldd = {
@@ -2882,15 +3199,13 @@ var kldd = {
     name: "\u51A5\u706B\u4E4B\u9524",
     tags: ["\u63A7\u5236"],
     // v3.0
-    cooldown: 8,
+    cooldown: 7,
     castTime: 0,
     description:
-      "\u653B\u51FB\xD7190%\u9B54\u6CD5+\u7729\u66551s\uFF1B4s\u540E\u8FFD\u52A0100%\u7EAF\u7CB9",
-    damage: [
-      { type: "magical" /* Magical */, atkRatio: 1.9 },
-      { type: "pure" /* Pure */, atkRatio: 1 },
-    ],
-    effects: [{ type: "stun" /* Stun */, duration: 1 }],
+      "\u5BF91\u654C\u9020\u6210\u653B\u51FB\xD7150%\u9B54\u6CD5\u5E76\u7729\u66551.5s\uFF1B4s\u540E\u8FFD\u52A0\u653B\u51FB\xD775%\u7EAF\u7CB9\uFF0C\u81EA\u8EAB\u6062\u590D25%\u653B\u51FB\u8840\u91CF",
+    // v3.3: 75%纯粹由 battle.ts 的 4s 延迟结算，此处不再重复立即结算
+    damage: [{ type: "magical" /* Magical */, atkRatio: 1.5 }],
+    effects: [{ type: "stun" /* Stun */, duration: 1.5 }],
   },
 };
 var klb = {
@@ -2939,11 +3254,11 @@ var yammxz = {
     id: "yammxz_swap",
     name: "\u6697\u5F71\u6362\u4F4D",
     tags: ["\u79FB\u52A8"],
-    cooldown: 7,
+    cooldown: 8,
     castTime: 0,
     description:
-      "\u4E0E\u53CB\u65B9\u6362\u4F4D\u2192\u5BF9\u79F02\u540D\u654C\u4EBA\u6C89\u9ED84s+\u653B\u51FB\xD7135%\u7EAF\u7CB9",
-    damage: [{ type: "pure" /* Pure */, atkRatio: 1.35 }],
+      "\u4E0E\u53CB\u65B9\u6362\u4F4D\u540E\uFF0C\u4F7F2\u540D\u968F\u673A\u654C\u4EBA\u6C89\u9ED84s\uFF0C\u5E76\u9020\u6210\u653B\u51FB\xD7120%\u7EAF\u7CB9\u4F24\u5BB3",
+    damage: [{ type: "pure" /* Pure */, atkRatio: 1.2 }],
     scriptId: "yammxz_swap",
     effects: [{ type: "silence" /* Silence */, duration: 4 }],
   },
@@ -2966,11 +3281,11 @@ var dyq = {
     id: "dyq_dash",
     name: "\u51B2\u523A",
     tags: ["\u79FB\u52A8"],
-    cooldown: 7,
+    cooldown: 5,
     castTime: 0,
     description:
-      "\u540C\u5217\u7AD6\u6392\u5168\u4F53\u653B\u51FB\xD7170%\u9B54\u6CD5+30%\u707C\u70E74s\uFF08\u547D\u4E2D3\u4EBA-30%\uFF09",
-    damage: [{ type: "magical" /* Magical */, atkRatio: 1.7 }],
+      "\u5BF9\u540C\u5217\u7AD6\u6392\u5168\u4F53\u9020\u6210\u653B\u51FB\xD7130%\u9B54\u6CD5\uFF0C30%\u51E0\u7387\u8BC5\u54924s\uFF08\u547D\u4E2D3\u4EBA-30%\uFF09",
+    damage: [{ type: "magical" /* Magical */, atkRatio: 1.3 }],
     effects: [
       { type: "burn" /* Burn */, duration: 4, value: 0.05, chance: 0.3 },
     ],
@@ -2995,11 +3310,11 @@ var hlyl = {
     id: "hlyl_fire",
     name: "\u706B\u7130\u55B7\u5410",
     tags: [],
-    cooldown: 8,
+    cooldown: 7,
     castTime: 1,
     description:
-      "\u524D\u6392\u6700\u4F4E\u8840\uFF1A\u6BCF\u79D2\u653B\u51FB\xD750%\u9B54\u6CD5\uFF0C\u6301\u7EED6s",
-    damage: [{ type: "magical" /* Magical */, atkRatio: 0.5 }],
+      "\u5BF91\u540D\u654C\u4EBA\u9020\u6210\u6BCF\u79D2\u653B\u51FB\xD735%\u9B54\u6CD5\u4F24\u5BB3\uFF0C\u6301\u7EED7s",
+    damage: [{ type: "magical" /* Magical */, atkRatio: 0.35 }],
     aoe: { maxTargets: 1 },
     scriptId: "hlyl_fire",
   },
@@ -3025,8 +3340,8 @@ var bsxl = {
     cooldown: 10,
     castTime: 1,
     description:
-      "\u540E\u6392\u5168\u90E8\uFF1A\u964D20%\u653B\u901F+\u6BCF\u79D2\u653B\u51FB\xD780%\u9B54\u6CD53s\uFF1B\u6BCF3\u6B21\u2192\u51B0\u51BB",
-    damage: [{ type: "magical" /* Magical */, atkRatio: 0.8 }],
+      "\u968F\u673A1\u6392\u654C\u4EBA: \u964D40%\u653B\u901F+\u6BCF\u79D2\u653B\u51FB\xD760%\u9B54\u6CD5\u4F24\u5BB34s\uFF1B\u6BCF2\u6B21\u53D1\u52A8\uFF0C\u4E0B\u6B21\u964D\u653B\u901F\u53D8\u4E3A[\u51B0\u51BB]",
+    damage: [{ type: "magical" /* Magical */, atkRatio: 0.6 }],
     aoe: { maxTargets: 3 },
     scriptId: "bsxl_freeze",
   },
@@ -3052,9 +3367,9 @@ var xyfl = {
     cooldown: 9,
     castTime: 1,
     description:
-      "\u968F\u673A2\u6392\u5168\u4F53\uFF1A\u653B\u51FB\xD7190%\u7269\u7406+60%\u6253\u4E71\u4F4D\u7F6E(\u547D\u4E2D5\u4EBA-30%)",
-    // P1修复: 按文档190%
-    damage: [{ type: "physical" /* Physical */, atkRatio: 1.9 }],
+      "\u968F\u673A4\u540D\u654C\u4EBA\u53D7\u5230\u653B\u51FB\xD7240%\u7269\u7406\uFF0C\u5E76\u968F\u673A\u6253\u4E71\u5B83\u4EEC\u4E4B\u95F4\u7684\u4F4D\u7F6E",
+    // v3.15g: 220→260（对齐 handler）
+    damage: [{ type: "physical" /* Physical */, atkRatio: 2.4 }],
     aoe: { maxTargets: 6 },
     scriptId: "xyfl_chaos",
   },
@@ -3077,12 +3392,12 @@ var hbfl = {
     id: "hbfl_heal",
     name: "\u51B0\u5C01\u6CBB\u7597",
     tags: ["\u6CBB\u7597"],
-    cooldown: 12,
+    cooldown: 10,
     castTime: 1,
     description:
-      "\u51B0\u5C01<75%HP\u9F99\u65CF4s\uFF08\u514D\u75AB\u7269\u7406\uFF09\uFF0C\u6BCF\u79D2\u653B\u51FB\xD760%+\u6700\u5927HP\xD76%",
+      "\u51B0\u5C01<75%HP\u9F99\u65CF4s\uFF08\u514D\u75AB\u7269\u7406\uFF0C\u88AB\u51B0\u5C01\u65E0\u6CD5\u884C\u52A8\uFF09\uFF0C\u6BCF\u79D2\u63D0\u4F9B\u653B\u51FB\xD770%+\u6700\u5927HP\xD73%\u6CBB\u7597",
     // P1修复: 按文档60%/6%
-    heal: { atkRatio: 0.6, targetMaxHpRatio: 0.06 },
+    heal: { atkRatio: 0.7, targetMaxHpRatio: 0.06 },
   },
 };
 var bjl = {
@@ -3107,10 +3422,11 @@ var bjl = {
     cooldown: 9,
     castTime: 0,
     description:
-      "\u4E2D\u540E\u6392\u54041\u540D\uFF1A\u7B2C1\u4E2A180%\u7269\u4F24+30%\u964D\u653B\u901F4s\uFF0C\u7B2C2\u4E2A230%\u7269\u4F24",
+      "\u4E2D\u540E\u6392\u54041\u540D: \u7B2C1\u4E2A200%\u7269\u4F24+30%\u964D\u653B\u901F4s\uFF0C\u7B2C2\u4E2A240%\u7269\u4F24",
+    // v3.15c: 180/230→210/260
     damage: [
-      { type: "physical" /* Physical */, atkRatio: 1.8 },
-      { type: "physical" /* Physical */, atkRatio: 2.3 },
+      { type: "physical" /* Physical */, atkRatio: 2 },
+      { type: "physical" /* Physical */, atkRatio: 2.4 },
     ],
     aoe: { maxTargets: 2 },
     scriptId: "bjl_wing",
@@ -3129,14 +3445,14 @@ var zs = {
   },
   growth: { hp: 80, attack: 8.5, physicalDef: 2, magicalDef: 2.5 },
   talent:
-    "\u81EA\u8EAB\u653B\u51FB\xB7\u6280\u80FD\u5404\u670935%/50%\u51E0\u7387\u9644\u52A0\u76EE\u6807\u5F53\u524D\u751F\u547D\u503C\xD78%\u7684\u9B54\u6CD5\u4F24\u5BB3",
+    "\u81EA\u8EAB\u653B\u51FB/\u6280\u80FD\u5404\u670935%/75%\u51E0\u7387\u9644\u52A0\u76EE\u6807\u5F53\u524DHP\xD78%\u7684\u9B54\u6CD5\u4F24\u5BB3",
   skill: {
     id: "zs_storm",
     name: "\u795E\u4E4B\u6012\u96F7",
     tags: [],
-    cooldown: 11,
+    cooldown: 10,
     castTime: 2,
-    description: "\u5168\u5C4F\u653B\u51FB\xD7150-180%\u9B54\u6CD5",
+    description: "\u5168\u5C4F\u653B\u51FB\xD7160-180%\u9B54\u6CD5",
     // v2.35 宙斯 1.65→1.7
     damage: [{ type: "magical" /* Magical */, atkRatio: 1.7 }],
     aoe: { maxTargets: 9 },
@@ -3156,15 +3472,15 @@ var xjl = {
   },
   growth: { hp: 75, attack: 7, physicalDef: 3, magicalDef: 2.5 },
   talent:
-    "\u6211\u65B9\u5168\u573A\u5355\u4F4D\u6BCF\u6B21\u53D1\u52A8\u6280\u80FD\u5BF9\u654C\u65B9\u9020\u6210\u4F24\u5BB3\uFF0C\u81EA\u8EAB\u6062\u590D\u6700\u5927\u751F\u547D\u503C\xD71.5%\u7684\u8840\u91CF\uFF08\u6BCF3s\u6700\u591A\u901A\u8FC7\u8BE5\u5929\u8D4B\u6062\u590D\u6700\u5927\u751F\u547D\u503C\xD76%\u7684\u8840\u91CF\uFF09",
+    "\u6BCF\u79D2\u6062\u590D1%\u6700\u5927HP\uFF1B\u6211\u65B9\u5168\u573A\u6BCF\u6B21\u6280\u80FD\u5BF9\u654C\u9020\u6210\u4F24\u5BB3\uFF0C\u81EA\u8EAB\u6062\u590D1%\u6700\u5927HP\uFF08\u6BCF2s\u6700\u591A5%\uFF09",
   skill: {
     id: "xjl_link",
     name: "\u94FE\u63A5",
     tags: [],
-    cooldown: 11,
+    cooldown: 9,
     castTime: 0,
     description:
-      "\u94FE\u63A51\u540D\u53CB\u65B98s\uFF1A+30%\u6280\u80FD\u589E\u5F3A+20%\u6280\u80FD\u5438\u8840\uFF0C\u81EA\u8EAB\u627F\u62C525%\u4F24\u5BB3",
+      "\u94FE\u63A51\u540D\u53CB\u65B98s: +30%\u6280\u80FD\u589E\u5F3A+\u53CC\u65B9\u5929\u8D4B20%\u6548\u679C\uFF0C\u81EA\u8EAB\u4EE3\u66FF\u53CB\u65B9\u627F\u62C525%\u4F24\u5BB3",
     scriptId: "xjl_link",
   },
 };
@@ -3173,24 +3489,26 @@ var swxz = {
   name: "\u6B7B\u4EA1\u5148\u77E5",
   race: "undead" /* Undead */,
   stats: {
-    hp: 10850,
+    hp: 9365,
+    // v3.3 成长-15%: 950+85×99
     attack: 797.5,
     physicalDef: 329,
     magicalDef: 358.8,
     attackInterval: 3.6,
   },
-  growth: { hp: 100, attack: 7.5, physicalDef: 3, magicalDef: 3.2 },
+  growth: { hp: 85, attack: 7.5, physicalDef: 3, magicalDef: 3.2 },
+  // v3.3 100→85
   talent:
-    "\u81EA\u8EAB\u6BCF\u7D2F\u79EF\u9020\u6210700\u4F24\u5BB3\uFF0C\u83B7\u5F973.5%\u4F24\u5BB3\u51CF\u514D\u76F4\u5230\u6218\u6597\u7ED3\u675F\uFF08\u6700\u5927\u53E0\u52A010\u5C42\uFF09 \uFF08\u8BA1\u7B97\u5B9E\u9645\u9020\u6210\u7684\u4F24\u5BB3\uFF09",
+    "\u81EA\u8EAB\u6BCF\u7D2F\u79EF\u9020\u6210800\u4F24\u5BB3\uFF0C\u83B7\u5F973%\u4F24\u5BB3\u51CF\u514D\u76F4\u5230\u6218\u6597\u7ED3\u675F\uFF08\u6700\u591A10\u5C42\uFF0C\u8BA1\u7B97\u5B9E\u9645\u4F24\u5BB3\uFF09",
   // v3.0,
   skill: {
     id: "swxz_drain",
     name: "\u5438\u9B42\u5DEB\u672F",
     tags: [],
-    cooldown: 9,
+    cooldown: 7,
     castTime: 0,
     description:
-      "\u5438\u53D6\u5355\u4F4D6s\uFF1A\u6BCF\u79D2\u653B\u51FB\xD79%+\u6700\u5927HP\xD72%\u9B54\u6CD5\uFF0C\u81EA\u8EAB\u5438\u884025%\u3002\u4F18\u5148\u524D\u6392(70/15/15)\u3002\u7ED3\u675F\u540E\u8BC5\u54924s",
+      "\u5438\u53D61\u5355\u4F4D10s: \u6BCF\u79D2\u9020\u6210\u81EA\u8EAB\u653B\u51FB\xD76%+\u76EE\u6807\u6700\u5927HP\xD71%\u9B54\u6CD5\uFF0C\u81EA\u8EAB\u83B7\u5F9715%\u6280\u80FD\u5438\u8840\u3002\u4F18\u5148\u524D\u6392(70/15/15)",
     scriptId: "swxz_drain",
     priority: [
       { row: 0 /* Front */, chance: 70 },
@@ -3217,15 +3535,15 @@ var xcl = {
     id: "xcl_star",
     name: "\u661F\u8FB0\u51B2\u51FB",
     tags: ["\u63A7\u5236"],
-    cooldown: 10,
+    cooldown: 11,
     castTime: 2,
     description:
-      "2\xD72\u968F\u673A\u683C\u5B50\uFF1A\u653B\u51FB\xD7180%\u9B54\u6CD5+20%\u6C89\u9ED8/20%\u7F34\u68B03s",
-    damage: [{ type: "magical" /* Magical */, atkRatio: 1.8 }],
+      "2\xD72\u968F\u673A\u683C\u5B50\u4E0A\u7684\u654C\u4EBA\u53D7\u5230\u653B\u51FB\xD7170%\u9B54\u6CD5\uFF0C\u5E76\u5404\u670920%\u6C89\u9ED8/20%\u7F34\u68B03s",
+    damage: [{ type: "magical" /* Magical */, atkRatio: 1.7 }],
     aoe: { maxTargets: 4 },
     effects: [
-      { type: "silence" /* Silence */, duration: 3 },
-      { type: "disarm" /* Disarm */, duration: 3 },
+      { type: "silence" /* Silence */, duration: 3, chance: 0.2 },
+      { type: "disarm" /* Disarm */, duration: 3, chance: 0.2 },
     ],
   },
 };
@@ -3242,16 +3560,16 @@ var dl = {
   },
   growth: { hp: 70, attack: 8, physicalDef: 2.5, magicalDef: 2 },
   talent:
-    "\uFF08\u7C97\u66B4\u9F99\u76AE\uFF09\u81EA\u8EAB\u53D7\u5230\u666E\u901A\u653B\u51FB\uFF0C\u968F\u673A\u53D1\u52A8 1 \u4E2A\u6548\u679C\uFF1A\u2776\u653B\u51FB\u8005\u53D7\u5230\u81EA\u8EAB\u653B\u51FB\xD710%\u7684\u7EAF\u7CB9\u4F24\u5BB3\uFF1B\u2777\u4F7F\u81EA\u8EAB\u53D7\u5230\u7684\u90A3\u6B21\u4F24\u5BB3-40%",
+    "\u7C97\u66B4\u9F99\u76AE: \u53D7\u5230\u666E\u653B\u968F\u673A\u53D1\u52A8\u2460\u653B\u51FB\u8005\u53D7\u81EA\u8EAB\u653B\u51FB\xD712%\u7EAF\u7CB9 \u2461\u8BE5\u6B21\u4F24\u5BB3-30%",
   // v3.0 重写,
   skill: {
     id: "dl_stomp",
     name: "\u9F99\u8E0F",
     tags: ["\u63A7\u5236"],
-    cooldown: 10,
+    cooldown: 11,
     castTime: 2,
     description:
-      "\u5168\u5C4F\u653B\u51FB\xD7150%\u7269\u7406\uFF08\u524D\u6392140%/\u4E2D\u6392110%/\u540E\u639280%\uFF09+\u964D\u547D\u4E2D20%5s",
+      "\u654C\u65B9\u5168\u4F53\u653B\u51FB\xD7150%\u7269\u7406\uFF08\u524D\u6392130%/\u4E2D\u6392100%/\u540E\u639270%\uFF09\uFF0C\u5E76\u964D\u4F4E20%\u547D\u4E2D\u73875s",
     // v3.8: 145→150%
     damage: [{ type: "physical" /* Physical */, atkRatio: 1.5 }],
     aoe: { maxTargets: 9 },
@@ -3277,10 +3595,10 @@ var lyz = {
     name: "\u9F99\u541F\u6CBB\u6108",
     tags: ["\u6CBB\u7597", "\u589E\u76CA"],
     // v3.0
-    cooldown: 11,
+    cooldown: 10,
     castTime: 2,
     description:
-      "\u6700\u4F4EHP\u9F99\u65CF\uFF1A\u6BCF\u79D2\u653B\u51FB\xD740%+20%\u51CF\u4F244s\uFF1B4\u6B21\u540E\u5347\u7EA7\u53CC\u76EE\u680770%+30%\u51CF\u4F24\uFF1B\u9F99\u65CF\u9635\u4EA1\u65F6\u968F\u673A\u590D\u6D3B1\u53EA5s",
+      "\u6CBB\u7597\u6700\u4F4EHP\u9F99\u65CF: \u6BCF\u79D2\u653B\u51FB\xD740%+20%\u51CF\u4F244s\uFF1B\u6BCF4\u6B21\u540E\u4E0B\u6B21\u5347\u7EA7\uFF0C\u82E5\u6709\u9635\u4EA1\u9F99\u65CF\u968F\u673A\u590D\u6D3B1\u53EA\u5E76\u65E0\u654C5s",
     heal: { atkRatio: 0.4 },
     scriptId: "lyz_heal",
   },
@@ -3299,16 +3617,17 @@ var xblr = {
   },
   growth: { hp: 78, attack: 10, physicalDef: 2.3, magicalDef: 2.2 },
   talent:
-    "\u6BCF\u5F53\u6211\u65B9\u573A\u4E0A\u5176\u4ED6\u730E\u4EBA\u89D2\u8272\u8FDB\u884C\u666E\u901A\u653B\u51FB\uFF0C\u81EA\u8EAB\u6709 10%\u51E0\u7387\u989D\u5916\u53D1\u8D77 1 \u6B21\u653B\u51FB\uFF0C\u8FD9\u6B21\u653B\u51FB\u66B4\u51FB\u7387+30%\uFF08\u51B7\u5374\uFF1A3 s\uFF09",
+    "\u6211\u65B9\u5168\u4F53\u730E\u4EBA\u6BCF\u6B21\u653B\u51FB\uFF0C\u81EA\u8EAB\u989D\u5916\u5BF9\u8BE5\u76EE\u6807\u8FDB\u884C\u4E00\u6B2110%\u4F24\u5BB3\u7684\u653B\u51FB\uFF0C\u8BE5\u653B\u51FB\u66B4\u51FB\u7387+35%",
   // v3.0 重做,
   skill: {
     id: "xblr_shot",
     name: "\u8DF3\u8DC3\u5C04\u51FB",
     tags: ["\u79FB\u52A8"],
-    cooldown: 10,
+    cooldown: 8,
     castTime: 0,
     description:
-      "\u8DF3\u81F3\u7A7A\u4F4D\u21921-3\u540D\u654C\u4EBA\u54043\u53D1\uFF1A80%/90%/120%+\u7B2C3\u53D1\u5FC5\u66B4\u51FB",
+      "\u8DF3\u81F3\u7A7A\u4F4D\u540E\uFF0C\u5BF92\u540D\u654C\u4EBA\u54043\u53D1\u653B\u51FB\uFF1A90%/100%/120%\uFF0C\u7B2C3\u53D1\u5FC5\u66B4\u51FB",
+    // v3.16 用户: 120→110,
     damage: [{ type: "physical" /* Physical */, atkRatio: 0.97 }],
     aoe: { maxTargets: 3 },
     scriptId: "xblr_shot",
@@ -3328,15 +3647,16 @@ var ldshz = {
   },
   growth: { hp: 90, attack: 7, physicalDef: 3.2, magicalDef: 3 },
   talent:
-    "\uFF08\u81EA\u7136\u62A4\u76FE\uFF09\u81EA\u8EAB\u53D7\u5230\u6280\u80FD\u4F24\u5BB3\u65F6\uFF0C\u6709 40%+\u7B49\u7EA7\xD70.1% \u51E0\u7387\u83B7\u5F97\u4E00\u4E2A\u62A4\u76FE\uFF0C\u62A4\u76FE\u503C\u4E3A\u81EA\u8EAB\u653B\u51FB\u529B\xD7600%\uFF0C\u6301\u7EED 4 \u79D2\uFF08\u51B7\u5374 5 \u79D2\uFF09\u3002\u62A4\u76FE\u7834\u788E\u65F6\uFF0C\u4F7F\u6211\u65B9\u573A\u4E0A\u6240\u6709\u5E73\u5206\u62A4\u76FE\u503C\u7684\u6062\u590D\u6548\u679C\u3002",
+    "\u81EA\u8EABHP>90%\u65F6\u53D7\u4F24-60%\uFF0CHP>40%\u65F6\u53D7\u4F24-30%",
   skill: {
     id: "ldshz_buff",
     name: "\u81EA\u7136\u5B88\u62A4",
     tags: ["\u589E\u76CA"],
-    cooldown: 12,
+    cooldown: 8,
     castTime: 0,
     description:
-      "\u5168\u961F+20%\u53CC\u9632+\u540C\u6392\u540E\u6392\u53CB\u65B9+20%\u66B4\u51FB+30%\u5438\u88406s",
+      "\u4F7F\u81EA\u8EAB\u53CA\u968F\u673A2\u540D\u53CB\u65B9\u83B7\u5F97\u62A4\u76FE(\u81EA\u8EAB\u653B\xD7600%)6s\uFF1B\u62A4\u76FE\u7834\u788E\u65F6\u6211\u65B9\u5168\u573A\u83B7\u5F9730%\u62A4\u76FE\u503C\u6CBB\u7597",
+    // v3.16 用户: 30→35,
     scriptId: "ldshz_buff",
   },
 };
@@ -3353,7 +3673,7 @@ var jdds = {
   },
   growth: { hp: 75, attack: 7.5, physicalDef: 2.5, magicalDef: 1.8 },
   talent:
-    "\u81EA\u8EAB\u6BCF\u6B21\u51FB\u6740\u654C\u65B9\u5355\u4F4D\u53D7\u5230\u81EA\u8EAB\u5F53\u524D\u653B\u51FB\xD720%\u7684\u53CD\u51B2\u4F24\u5BB3\uFF0C\u90A3\u4E4B\u540E\u63D0\u53475%+\u7B49\u7EA7\xD70.02%\u653B\u51FB\u529B\uFF08100\u7EA7\uFF1A+7%\u653B\u51FB\u529B\uFF09\u4E0E3%\u9632\u5FA1\u529B\uFF0C\u76F4\u5230\u6218\u6597\u7ED3\u675F\u3002",
+    "\u6211\u65B9\u5168\u4F53\u6218\u58EB\u6BCF\u6B21\u51FB\u6740\uFF0C\u81EA\u8EAB\u53D7\u5F53\u524D\u653B\xD710%\u53CD\u51B2\uFF0C\u4E4B\u540E+3%+\u7B49\u7EA7\xD70.02%\u653B\u4E0E5%\u9632\u76F4\u5230\u6218\u6597\u7ED3\u675F",
   // v3.0,
   skill: {
     id: "jdds_steal",
@@ -3363,6 +3683,7 @@ var jdds = {
     castTime: 0,
     description:
       "\u593A\u53D6\u654C\u65B9\u653B\u6700\u9AD8\u89D2\u827220%\u653B\u51FB\u529B5s",
+    // v3.16 用户: 20→30,
     scriptId: "jdds_steal",
   },
 };
@@ -3384,13 +3705,13 @@ var wlgyz = {
     id: "wlgyz_heal",
     name: "\u6B7B\u4EA1\u9882\u6B4C",
     tags: ["\u6CBB\u7597", "\u51CF\u76CA"],
-    cooldown: 11,
-    castTime: 1.5,
+    cooldown: 8,
+    castTime: 2,
     description:
-      "\u6062\u590D\u968F\u673A2\u540D\u53CB\u65B9\u653B\u51FB\xD7200%\u751F\u547D+\u8BC5\u5492\u968F\u673A1\u540D\u654C\u65B93s",
-    heal: { atkRatio: 2 },
+      "\u65BD\u6CD52s\uFF0C\u6062\u590D\u968F\u673A2\u540D\u53CB\u65B9\u653B\u51FB\xD7160%\u751F\u547D\uFF0C\u5E76\u8BC5\u5492\u968F\u673A1\u540D\u654C\u65B95s",
+    heal: { atkRatio: 1.6 },
     aoe: { maxTargets: 2 },
-    effects: [{ type: "curse" /* Curse */, duration: 3 }],
+    effects: [{ type: "curse" /* Curse */, duration: 5 }],
   },
 };
 var mrsz = {
@@ -3406,15 +3727,15 @@ var mrsz = {
   },
   growth: { hp: 66, attack: 9.9, physicalDef: 1.6, magicalDef: 2.4 },
   talent:
-    "\u653B\u51FB\u5904\u4E8E\u5F02\u5E38\u72B6\u6001\u7684\u654C\u4EBA\u83B7\u5F9715%\u5438\u8840\u6548\u679C\uFF0C\u590D\u6D3B\u540E\u8BE5\u5929\u8D4B+100%",
+    "\u653B\u51FB\u5F02\u5E38\u72B6\u6001\u654C\u4EBA\u9020\u6210\u4F24\u5BB3+10%\uFF0C\u83B7\u5F9720%\u5438\u8840\uFF0C\u590D\u6D3B\u540E\u6548\u679C2\u500D",
   skill: {
     id: "mrsz_doom",
     name: "\u672B\u65E5",
     tags: ["\u63A7\u5236"],
-    cooldown: 13,
+    cooldown: 14,
     castTime: 0,
     description:
-      "\u6D88\u80176%HP\u2192\u9501\u5B9A\u8FD110s\u4F24\u5BB3\u6700\u9AD8\u76EE\u6807\uFF1A\u51CF\u759775%+\u6BCF\u79D213%atk\u7EAF\u7CB9+\u6C89\u9ED8+\u7834\u574F\uFF0C11s\uFF08HP<20%\u4E0D\u53EF\u7528\uFF09",
+      "\u6D88\u80176%\u6700\u5927HP\uFF0C\u9501\u5B9A\u8FD110s\u4F24\u5BB3\u6700\u9AD8\u76EE\u6807: \u53D7\u7597-75%\u3001\u6BCF\u79D213%\xD7\u653B\u51FB\u7EAF\u7CB9\u3001[\u6C89\u9ED8]+[\u7834\u574F]8s\uFF08HP<15%\u4E0D\u53EF\u7528\uFF09",
     scriptId: "mrsz_doom",
   },
 };
@@ -3431,16 +3752,16 @@ var hyz = {
   },
   growth: { hp: 60, attack: 6, physicalDef: 1.8, magicalDef: 3.5 },
   talent:
-    "\u6BCF\u7ECF\u8FC7 4 s \u6216\u8005\u6BCF\u5F53\u6211\u65B9\u89D2\u8272\u5BF9\u654C\u65B9\u65BD\u52A0\u8D1F\u9762\u72B6\u6001(\u6BCF\u6B21\u65BD\u52A0\u52A8\u4F5C\u4EC5\u589E\u52A0 1 \u5C42,\u65E0\u8BBA\u76EE\u6807\u6570\u91CF),\u81EA\u8EAB\u90FD\u4F1A\u83B7\u5F97 1 \u5C42 [\u9B42\u80FD] \u5C42\u6570,\u6700\u591A\u53E0\u52A0 5 \u5C42\u3002\u6BCF\u5C42 [\u9B42\u80FD] \u4F7F\u81EA\u8EAB\u653B\u51FB\u529B\xB7\u9632\u5FA1\u529B\u63D0\u5347 8%\uFF1B\u590D\u6D3B\u540E,\u7ACB\u5373\u83B7\u5F97 5 \u5C42 [\u9B42\u80FD]\u3002",
+    "\u6BCF4s\u6216\u6BCF\u5F53\u6211\u65B9\u5BF9\u654C\u65BD\u52A0\u8D1F\u9762\u72B6\u6001(\u6BCF\u6B21\u52A8\u4F5C1\u5C42)\u83B7\u5F971\u5C42\u9B42\u80FD\uFF0C\u6700\u591A5\u5C42\uFF1B\u6BCF\u5C42\u653B+5%\u9632+10%\uFF1B\u590D\u6D3B\u540E\u7ACB\u5373\u83B7\u5F975\u5C42",
   skill: {
     id: "hyz_shield",
     name: "\u9B42\u80FD\u62A4\u76FE",
     tags: ["\u79FB\u52A8", "\u589E\u76CA"],
     // v3.0
-    cooldown: 12,
+    cooldown: 13,
     castTime: 0,
     description:
-      "\u6D88\u8017\u5168\u90E8\u9B42\u80FD\u2192\u77AC\u79FB\u6700\u4F4EHP\u4EA1\u7075\u65C1+\u62A4\u76FE(\u653B\u51FB\xD790%\xD7\u5C42\u6570)+\u9A71\u6563\u5468\u56F41\u683C",
+      "\u6D88\u8017\u5168\u90E8\u9B42\u80FD\uFF0C\u77AC\u79FB\u81F31\u4E2A\u7A7A\u4F4D\uFF1B\u4F7F\u968F\u673A1\u540D\u53CB\u65B9\u9A71\u6563\u5168\u90E8\u8D1F\u9762\uFF0C\u81EA\u8EAB\u4E0E\u76EE\u6807\u83B7\u5F97\u62A4\u76FE(\u653B\u51FB\xD780%\xD7\u5C42\u6570)",
     scriptId: "hyz_shield",
   },
 };
@@ -3460,7 +3781,7 @@ var fz = {
   },
   growth: { hp: 80, attack: 5.6, physicalDef: 2, magicalDef: 0.8 },
   talent:
-    "\uFF08\u7B26\u5492\uFF09\u81EA\u8EAB\u6BCF\u6B21\u653B\u51FB\uFF0C\u968F\u673A\u53D1\u52A81\u4E2A\u7B26\u5492\u6548\u679C\uFF1A\u2776\u4F24\u5BB3\u53D8\u7EAF\u7CB9\uFF1B\u2777\u989D\u5916\u5BF9\u76EE\u6807\u5468\u56F4\u968F\u673A1\u540D\u654C\u4EBA\u9020\u621030%\u6B21\u7EA7\u4F24\u5BB3(\u65E0\u89C670%\u9632\u5FA1)\uFF1B\u2778\u53E0\u52A01\u5C42\u7B26\u5492\u5370\u8BB0(\u76F4\u5230\u9635\u4EA1\u6216\u76EE\u6807\u79FB\u52A8/\u9635\u4EA1)",
+    "\u6BCF\u6B21\u653B\u51FB\u968F\u673A2\u90091: \u2460\u4F24\u5BB3\u964D\u4F4E20%\u53D8\u7EAF\u7CB9 \u2461\u5BF9\u76EE\u6807\u53E01\u5C42\u7B26\u5492\u5370\u8BB0(\u76F4\u5230\u81EA\u8EAB\u9635\u4EA1\u6216\u76EE\u6807\u79FB\u52A8/\u9635\u4EA1)",
   skill: {
     id: "fz_curse",
     name: "\u7B26\u5492",
@@ -3468,9 +3789,9 @@ var fz = {
     cooldown: 5,
     castTime: 1,
     description:
-      "\u5BF91\u540D\u654C\u4EBA\u9020\u6210\u653B\u51FB\xD7210%\u9B54\u6CD5\u4F24\u5BB3\uFF0C\u76EE\u6807\u6BCF\u5C42\u7B26\u5492\u5370\u8BB0+10%\u4F24\u5BB3",
-    // v3.5: 180→210%
-    damage: [{ type: "magical" /* Magical */, atkRatio: 2.1 }],
+      "\u5BF91\u540D\u654C\u4EBA\u9020\u6210\u653B\u51FB\xD780%\u9B54\u6CD5\u4F24\u5BB3\uFF0C\u76EE\u6807\u6BCF\u5C42\u7B26\u5492\u5370\u8BB0+8%\u4F24\u5BB3",
+    // v3.15g: 95→85
+    damage: [{ type: "magical" /* Magical */, atkRatio: 0.8 }],
     scriptId: "fz_curse",
   },
 };
@@ -3490,7 +3811,7 @@ var qm = {
   },
   growth: { hp: 75, attack: 6.5, physicalDef: 1.5, magicalDef: 3.5 },
   talent:
-    "\uFF08\u9A71\u9B54\uFF09\u81EA\u8EAB\u53D7\u5230\u5F02\u5E38\u72B6\u6001\u4F1A\u7ACB\u5373\u89E3\u9664\uFF0C\u5E76\u63D0\u534710%\u653B\u51FB\u529B\u4E0E20%\u9632\u5FA1\u529B\uFF0C\u6301\u7EED9s\uFF08\u6700\u5927\u53E0\u52A04\u5C42\uFF09",
+    "\u53D7\u5230\u5F02\u5E38\u72B6\u6001\u540E\u63D0\u53476%\u653B\u4E0E20%\u9632\uFF0C\u6301\u7EED12s\uFF08\u6700\u591A5\u5C42\uFF09",
   skill: {
     id: "qm_exorcise",
     name: "\u9A71\u9B54",
@@ -3498,9 +3819,9 @@ var qm = {
     cooldown: 8,
     castTime: 1,
     description:
-      "\u654C\u65B9\u968F\u673A2\xD72\u8303\u56F4\uFF1A\u653B\u51FB\xD7230%\u9B54\u6CD5\u4F24\u5BB3\uFF0C\u76EE\u6807\u6709\u589E\u76CA\u72B6\u6001\u2192\u4F24\u5BB3\u53D8\u7EAF\u7CB9",
-    // v3.5: 200→230%
-    damage: [{ type: "magical" /* Magical */, atkRatio: 2.3 }],
+      "\u654C\u65B9\u968F\u673A2\xD72\u8303\u56F4: \u653B\u51FB\xD7105%\u9B54\u6CD5\uFF0C\u76EE\u6807\u6709\u589E\u76CA\u72B6\u6001\u2192\u4F24\u5BB3\u53D8\u7EAF\u7CB9",
+    // v3.15g: 115→105
+    damage: [{ type: "magical" /* Magical */, atkRatio: 1.05 }],
     aoe: { maxTargets: 4 },
     scriptId: "qm_exorcise",
   },
@@ -3521,7 +3842,7 @@ var sq = {
   },
   growth: { hp: 90, attack: 5, physicalDef: 4, magicalDef: 4 },
   talent:
-    "\u81EA\u8EAB\u4E0D\u4F1A\u9677\u5165[\u6C89\u9ED8]/[\u7834\u574F]\u72B6\u6001",
+    "\u81EA\u8EAB\u4E0D\u4F1A\u9677\u5165[\u6C89\u9ED8]/[\u7834\u574F]/[\u7F34\u68B0]/[\u8BC5\u5492]\u72B6\u6001",
   skill: {
     id: "sq_heal",
     name: "\u5723\u5149\u6CBB\u6108",
@@ -3529,9 +3850,9 @@ var sq = {
     cooldown: 12,
     castTime: 0,
     description:
-      "\u6211\u65B92\u540D\u5723\u804C\u8005\u6062\u590D\u653B\u51FB\xD7240%\u751F\u547D\uFF1B\u6709\u8D1F\u9762\u2192\u9A71\u6563+\u6CBB\u7597+30%\uFF1B\u968F\u540E\u5723\u4E4B\u62A4\u76FE(\u9B54\u4F24-30%+\u5BF9\u6765\u6E90\u7729\u66551s+100%\u7EAF\u7CB9\u53CD\u4F24)8s",
-    // v3.5: 200→240%
-    heal: { fixedAdd: 0, atkRatio: 2.4 },
+      "\u6211\u65B92\u540D\u5723\u804C\u8005\u6062\u590D\u653B\u51FB\xD7120%\u751F\u547D\uFF1B\u6709\u8D1F\u9762\u5219\u9A71\u6563\u5E76+30%\u6CBB\u7597\uFF1B\u5723\u4E4B\u62A4\u76FE(\u9B54\u4F24-30%\uFF0C\u53CD\u5F3910%\u539F\u672C\u4F24\u5BB3\u4E3A\u7EAF\u7CB9)7s",
+    // v3.15g: 125→115 // v3.5: 200→240%
+    heal: { fixedAdd: 0, atkRatio: 1.2 },
     scriptId: "sq_heal",
   },
 };
@@ -3551,16 +3872,16 @@ var qd = {
   },
   growth: { hp: 60, attack: 7.5, physicalDef: 2, magicalDef: 1 },
   talent:
-    "\u6211\u65B9\u573A\u4E0A\u6240\u6709\u89D2\u8272\u6BCF\u6B21\u53D1\u52A8\u9700\u8981\u65BD\u6CD5\u6280\u80FD\uFF0C\u65BD\u6CD5\u6210\u529F\u540E\u5BF9\u654C\u65B9\u968F\u673A1\u540D\u9020\u6210\u653B\u51FB\xD78%\u7EAF\u7CB9\u4F24\u5BB3",
+    "\u6211\u65B9\u6240\u6709\u89D2\u8272\u6BCF\u6B21\u6280\u80FD\u540E\uFF0C\u5BF9\u654C\u65B9\u968F\u673A1\u540D\u9020\u6210\u653B\u51FB\xD73%\u7EAF\u7CB9\uFF0C\u5E76\u6CBB\u7597\u6211\u65B9\u968F\u673A1\u540D\u653B\u51FB\xD73%",
   skill: {
     id: "qd_pray",
     name: "\u7948\u7977",
     tags: ["\u6CBB\u7597", "\u589E\u76CA"],
     // v3.0 用户指定
-    cooldown: 8,
-    castTime: 2,
+    cooldown: 9,
+    castTime: 3,
     description:
-      "\u968F\u673A\u7948\u7977\u6548\u679C\uFF1A\u5927\u6210\u529F(\u65E0\u654C+\u56DE2%/s\xD75s)/\u6210\u529F(\u51CF\u4F2440%+\u56DE1%/s\xD75s)/\u4E00\u822C(\u51CF\u4F2420%\xD75s)/\u5931\u8D25(\u81EA\u635F10%\u6700\u5927HP)",
+      "\u65BD\u6CD53s\u540E\u968F\u673A\u7948\u7977: \u5927\u6210\u529F(\u81EA\u8EAB\u65E0\u654C+\u6BCF\u79D22%\u6700\u5927HP\xD75s)/\u6210\u529F(\u81EA\u8EAB\u51CF\u4F2440%+\u6BCF\u79D21%\xD75s)/\u4E00\u822C(\u81EA\u8EAB\u51CF\u4F2420%\xD75s)/\u5931\u8D25(\u81EA\u635F10%\u6700\u5927HP)",
     scriptId: "qd_pray",
   },
 };
@@ -3585,12 +3906,12 @@ var sqz = {
     id: "sqz_combo",
     name: "\u5723\u62F3\u8FDE\u51FB",
     tags: ["\u5207\u5165"],
-    cooldown: 6,
+    cooldown: 5,
     castTime: 0,
     description:
-      "\u5BF9\u654C\u65B9\u540E\u63921\u540D\u9020\u62103\u6B21\u653B\u51FB\uFF0C\u6BCF\u6B21\u653B\u51FB\xD795%\uFF08\u540E\u6392\u65E0\u4EBA\u2192\u4E2D\u524D\u6392\uFF09",
+      "\u5BF9\u654C\u65B9\u540E\u63921\u540D\u9020\u62103\u6B21\u653B\u51FB\uFF0C\u6BCF\u6B21\u653B\u51FB\xD770%\uFF08\u540E\u6392\u65E0\u4EBA\u2192\u4E2D\u524D\u6392\uFF09",
     // v3.5: 80→95%
-    damage: [{ type: "physical" /* Physical */, atkRatio: 0.95 }],
+    damage: [{ type: "physical" /* Physical */, atkRatio: 0.7 }],
     aoe: { maxTargets: 1 },
     scriptId: "sqz_combo",
   },
@@ -3615,12 +3936,12 @@ var zq = {
     id: "zq_flame",
     name: "\u6731\u96C0\u711A\u5929",
     tags: [],
-    cooldown: 10,
+    cooldown: 8,
     castTime: 2,
     description:
-      "\u5BF9\u654C\u65B9\u968F\u673A1\u6392\u9020\u6210\u653B\u51FB\xD7280%\u9B54\u6CD5\u4F24\u5BB3+\u707C\u70E74s",
-    // v3.5: 250→280%
-    damage: [{ type: "magical" /* Magical */, atkRatio: 2.8 }],
+      "\u5BF9\u654C\u65B9\u968F\u673A1\u6392\u9020\u6210\u653B\u51FB\xD7180%\u9B54\u6CD5\u4F24\u5BB3\uFF0C\u5E76\u707C\u70E74s",
+    // v3.15g: 150→135
+    damage: [{ type: "magical" /* Magical */, atkRatio: 1.8 }],
     scriptId: "zq_flame",
   },
 };
@@ -3640,15 +3961,15 @@ var sc = {
   },
   growth: { hp: 90, attack: 6.4, physicalDef: 3.6, magicalDef: 2.4 },
   talent:
-    "\u654C\u65B9\u573A\u4E0A\u6BCF\u5B58\u57281\u540D\u62E5\u6709\u589E\u76CA\u72B6\u6001\u7684\u5355\u4F4D\uFF0C\u81EA\u8EAB\u83B7\u5F975%\u4F24\u5BB3\u51CF\u514D",
+    "\u654C\u65B9\u573A\u4E0A\u6BCF\u5B58\u57281\u540D\u62E5\u6709\u589E\u76CA\u72B6\u6001\u7684\u5355\u4F4D\uFF0C\u81EA\u8EAB\u83B7\u5F976%\u4F24\u5BB3\u51CF\u514D",
   skill: {
     id: "sc_judge",
     name: "\u5BA1\u5224\u4E4B\u5149",
     tags: [],
-    cooldown: 9,
+    cooldown: 11,
     castTime: 2,
     description:
-      "\u5BF99s\u5185\u4F24\u5BB3\u6700\u9AD8\u654C\u4EBA\uFF1A\u6C89\u9ED8+\u653B\u51FB\xD730%\u7EAF\u7CB9DoT\xD75s\uFF1B\u76EE\u6807\u6709\u589E\u76CA\u2192\u7528\u76EE\u6807\u653B\u51FB\u529B\u8BA1\u7B97\uFF1B\u7ED3\u675F\u6E05\u9664\u5176\u5168\u90E8\u589E\u76CA",
+      "\u5BF9\u6700\u8FD19s\u7D2F\u8BA1\u4F24\u5BB3\u6700\u9AD8\u654C\u4EBA: \u6C89\u9ED8+\u6BCF\u79D2\u81EA\u8EAB\u653B\u51FB\xD735%\u7EAF\u7CB9\u6301\u7EED4s\uFF1B\u76EE\u6807\u6709\u589E\u76CA\u5219\u7528\u76EE\u6807\u653B\u51FB\u529B\u8BA1\u7B97\uFF0C\u6548\u679C\u7ED3\u675F\u540E\u6E05\u9664\u5176\u5168\u90E8\u589E\u76CA",
     scriptId: "sc_judge",
   },
 };
@@ -3659,25 +3980,26 @@ var xd = {
   stats: {
     hp: 7520,
     // v3.7 ×1.15
-    attack: 1246.4,
-    // v3.10 ×1.12 // v3.9 ×0.85 // v3.8 ×0.9 // v3.7 ×1.1 // v3.6: ×1.15 // v3.5: 圣职者加强
+    attack: 1147.4,
+    // v3.3 成长 8→7: 454.4+7×99 // v3.10 ×1.12 // v3.9 ×0.85 // v3.8 ×0.9 // v3.7 ×1.1 // v3.6: ×1.15 // v3.5: 圣职者加强
     physicalDef: 168.5,
     magicalDef: 252.8,
     // v3.7 ×1.5
     attackInterval: 3,
   },
-  growth: { hp: 60, attack: 8, physicalDef: 1.5, magicalDef: 1.5 },
+  growth: { hp: 60, attack: 7, physicalDef: 1.5, magicalDef: 1.5 },
+  // v3.3 8.0→7.0
   talent:
-    "\u9635\u4EA1\u65F6\uFF1A\u654C\u65B9\u5168\u4F53\u53D7\u81EA\u8EAB\u653B\u51FB\xD7150%\u7EAF\u7CB9\u4F24\u5BB3\uFF1B\u6211\u65B9\u5168\u4F53\u6062\u590D\u6700\u5927\u751F\u547D\xD730%\uFF1B\u6211\u65B9\u5168\u4F53\u795D\u798F(+10%\u4F24-10%\u53D7)30s",
+    "\u6BCF\u5F53\u53CB\u65B9\u89D2\u8272\u9635\u4EA1\uFF0C\u7ED9\u4E88\u654C\u65B9\u5168\u4F53\u81EA\u8EAB\u653B\u51FB\xD730%\u7EAF\u7CB9\uFF0C\u6211\u65B9\u5269\u4F59\u5355\u4F4D\u6062\u590D\u6700\u5927\u751F\u547D\xD75%",
   // P2,
   skill: {
     id: "xd_sacrifice",
     name: "\u727A\u7272",
     tags: ["\u5632\u8BBD"],
-    cooldown: 13,
+    cooldown: 8,
     castTime: 0,
     description:
-      "\u727A\u727225%\u5F53\u524D\u751F\u547D\uFF0C\u5632\u8BBD\u654C\u65B9\u524D\xB7\u4E2D\u6392\u968F\u673A2\u540D\uFF1A6s\u5185\u5355\u4F53\u6280\u80FD\xB7\u653B\u51FB\u53EA\u80FD\u5BF9\u6B89\u9053\u8005\u53D1\u52A8",
+      "\u4F7F\u654C\u65B9\u968F\u673A1\u540D\u9020\u6210\u4F24\u5BB3-20%\uFF0C\u6BCF\u79D2\u53D7\u5230\u76EE\u6807\u81EA\u8EAB\u9632\u5FA1\u603B\u548C\xD720%\u7EAF\u7CB9\uFF0C\u6301\u7EED4s\uFF1B\u81EA\u8EAB\u9635\u4EA1\u540E\u4ECD\u53EF\u53D1\u52A8\uFF0C\u51B7\u5374+100%\u4E14\u65E0\u964D\u4F24\u6548\u679C\uFF0C\u53EA\u9020\u621025%\u4F24\u5BB3",
     scriptId: "xd_sacrifice",
   },
 };
@@ -3728,6 +4050,7 @@ var ALL_CHARACTERS = [
   hbfl,
   bjl,
   lyz,
+  xcl,
   dl,
   fz,
   qm,
@@ -3738,6 +4061,7 @@ var ALL_CHARACTERS = [
   sc,
   xd,
 ];
+var SUMMON_CHARACTERS = [klb];
 var CHARACTER_MAP = buildCharacterMap();
 function buildCharacterMap() {
   let overrides = {};
@@ -3746,7 +4070,7 @@ function buildCharacterMap() {
     if (raw) overrides = JSON.parse(raw);
   } catch {}
   return new Map(
-    ALL_CHARACTERS.map((c) => {
+    [...ALL_CHARACTERS, ...SUMMON_CHARACTERS].map((c) => {
       const ov = overrides[c.id];
       if (!ov) return [c.id, c];
       return [
@@ -4437,6 +4761,8 @@ function createUnit(def, level, team, row, col = 0, equipmentId) {
     currentAttack: def.stats.attack,
     currentPhysicalDef: def.stats.physicalDef,
     currentMagicalDef: def.stats.magicalDef,
+    basePhysicalDef: def.stats.physicalDef,
+    baseMagicalDef: def.stats.magicalDef,
     cooldownRemaining: def.skill.cooldown * 0.9 * (0.85 + Math.random() * 0.3),
     // 起始冷却±15%随机，避免镜像先手固定
     castTimer: 0,
@@ -4478,6 +4804,13 @@ function moveToRandomEmpty(unit, state) {
 }
 function getEnemies(state, selfTeam) {
   return state.units.filter((u) => u.team !== selfTeam && !u.isDead);
+}
+function pick2x2(enemies) {
+  const r = Math.random() < 0.5 ? 0 : 1;
+  const c = Math.random() < 0.5 ? 0 : 1;
+  return enemies.filter(
+    (e) => e.row >= r && e.row <= r + 1 && e.col >= c && e.col <= c + 1
+  );
 }
 function pickTarget2(enemies, rowPref, excludeStealth = true) {
   if (excludeStealth) {
@@ -4545,6 +4878,9 @@ function initBattle(allyChars, enemyChars) {
       for (const u of us) {
         if (u.def.race === race) {
           if (effect.attackBonus) u.currentAttack *= bonus;
+          if (effect.attackSpeedBonus)
+            u.attackSpeedBonus =
+              (u.attackSpeedBonus || 0) + effect.attackSpeedBonus / 100;
           if (effect.defenseBonus) {
             u.currentPhysicalDef *= defBonus;
             u.currentMagicalDef *= defBonus;
@@ -4567,7 +4903,7 @@ function initBattle(allyChars, enemyChars) {
       }
       if (race === "dragon") {
         const cdMult = count >= 4 ? 0.7 : 0.8;
-        const baseDr = count >= 4 ? 0.06 : 0.04;
+        const baseDr = count >= 4 ? 0.12 : 0.08;
         const openMult = count >= 4 ? 2 : 2;
         const openDur = count >= 4 ? 10 : 6;
         const openDr = baseDr * openMult;
@@ -4586,7 +4922,7 @@ function initBattle(allyChars, enemyChars) {
         }
       }
       if (race === "beast") {
-        const tenacityVal = count >= 4 ? 40 : count >= 3 ? 20 : 10;
+        const tenacityVal = count >= 4 ? 35 : count >= 3 ? 20 : 10;
         if (tenacityVal > 0) {
           for (const u of us) {
             if (u.def.race === "beast") {
@@ -4595,15 +4931,8 @@ function initBattle(allyChars, enemyChars) {
           }
         }
       }
-      if (race === "undead" && count >= 4) {
-        for (const u of us) {
-          if (u.def.race === "undead") {
-            u.physDamageReduction = (u.physDamageReduction || 0) + 0.09;
-          }
-        }
-      }
       if (race === "mage") {
-        const cdReduce = count >= 4 ? 0.12 : count >= 3 ? 0.08 : 0;
+        const cdReduce = count >= 4 ? 0.09 : count >= 3 ? 0.07 : 0;
         if (cdReduce > 0) {
           for (const u of us) {
             if (u.def.race === "mage") {
@@ -4626,22 +4955,27 @@ function initBattle(allyChars, enemyChars) {
     const hl2 = us.find((u) => u.def.id === "hl" && !isRuined(u));
     if (hl2) {
       let totalRed = 0;
+      const hlLv = hl2.level || 100;
+      const roarPct = 0.3;
+      const roarDur = 5;
       for (const e of oppUnits) {
-        e.currentAttack = Math.floor(e.currentAttack * 0.8);
-        e._hlRoarAtk = (e._hlRoarAtk || 0) + 0.2;
-        e._hlRoarExpire = state.time + 8;
-        totalRed += Math.floor((e.currentAttack / 0.8) * 0.2);
+        const redAtk = Math.floor(e.currentAttack * roarPct);
+        e.currentAttack -= redAtk;
+        e._hlRoarAtk = (e._hlRoarAtk || 0) + roarPct;
+        e._hlRoarExpire = state.time + roarDur;
+        e._hlRoarStage2 = true;
+        totalRed += redAtk;
       }
       trackTalent(
         state,
         hl2.id,
-        "\u6012\u543C(\u964D\u653B20%\xD78s)",
-        totalRed * 8,
+        "\u6012\u543C(\u964D\u653B30%\xD75s\u219215%\xD78s)",
+        totalRed * 13,
         "buff"
       );
       state.battleLog.push({
         time: 0,
-        text: `\u{1F4E2} ${hl2.def.name} \u6012\u543C: \u654C\u65B9\u5168\u4F53\u653B\u51FB-20%\xD78s`,
+        text: `\u{1F4E2} ${hl2.def.name} \u6012\u543C: \u654C\u65B9\u5168\u4F53\u653B\u51FB-30%\xD75s\uFF0C\u4E4B\u540E-15%\xD78s`,
         type: "status",
       });
     }
@@ -4700,7 +5034,7 @@ function initBattle(allyChars, enemyChars) {
         (u) => u.def.race === "beast" && u.row === dxm2.row
       );
       for (const b of benefited) {
-        b.cooldownRemaining = Math.max(0, b.cooldownRemaining * 0.82);
+        b.cooldownRemaining = Math.max(0, b.cooldownRemaining * 0.88);
       }
       trackTalent(
         state,
@@ -4809,6 +5143,10 @@ function initBattle(allyChars, enemyChars) {
     lifeStealHealing: 0,
     skillHealing: 0,
     shieldAbsorbed: 0,
+    talentDamage: 0,
+    talentHealing: 0,
+    buffValue: 0,
+    controlSeconds: 0,
     skillInterrupts: 0,
     hitsTaken: 0,
     critsTaken: 0,
@@ -4864,13 +5202,13 @@ function initBattle(allyChars, enemyChars) {
     trackTalent(
       state,
       kldd2.id,
-      "\u53EC\u5524\u9AB7\u9AC5\u5175\xD72",
-      2,
+      "\u53EC\u5524\u9AB7\u9AC5\u5175\xD73",
+      3,
       "count"
     );
     state.battleLog.push({
       time: 0,
-      text: `\u{1F480} ${kldd2.def.name} \u53EC\u55242\u4E2A\u9AB7\u9AC5\u5175`,
+      text: `\u{1F480} ${kldd2.def.name} \u53EC\u55243\u4E2A\u9AB7\u9AC5\u5175`,
       type: "status",
     });
   };
@@ -5037,6 +5375,12 @@ function initBattle(allyChars, enemyChars) {
               text: `\u{1F31F} ${label} ${race}\xD7${cnt}\u7F81\u7ECA: \u653B+${effect.attackBonus}%`,
               type: "system",
             });
+          if (effect.attackSpeedBonus)
+            state.battleLog.push({
+              time: 0,
+              text: `\u{1F31F} ${label} ${race}\xD7${cnt}\u7F81\u7ECA: \u653B\u901F+${effect.attackSpeedBonus}%`,
+              type: "system",
+            });
           if (effect.defenseBonus)
             state.battleLog.push({
               time: 0,
@@ -5078,7 +5422,7 @@ function deferDamage(target, dmg, state) {
       (x) => x.id === target._linkOwnerId && !x.isDead
     );
     if (owner) {
-      const share = Math.floor(dmg * 0.25);
+      const share = Math.floor(dmg * 0.4);
       owner.currentHp -= share;
       addStat2(state, owner.id, "totalDamageReceived", share);
       dmg -= share;
@@ -5086,7 +5430,7 @@ function deferDamage(target, dmg, state) {
     }
   }
   if (target.def.id === "bslr") {
-    target._bslrBreakUntil = state.time + 2;
+    target._bslrBreakUntil = state.time + 1;
   }
   if (
     target.statuses?.some((s) => s.type === "sleep" /* Sleep */) &&
@@ -5132,6 +5476,7 @@ function processDelayedDamage(state) {
 function processTick(state) {
   if (state.phase !== "fighting") return state;
   state.time += 0.1;
+  setBattleClock(state.time);
   for (const u of state.units) {
     u._statusSnapshot = u.statuses.slice();
     u._hitSnapshot = !!u._wasHitDuringCast;
@@ -5139,15 +5484,24 @@ function processTick(state) {
     u._wasHitDuringCast = false;
     u._wasDamagedDuringCast = false;
   }
-  if (state.time >= 99.95) {
+  const frenzyStage = state.time >= 119.95 ? 2 : state.time >= 89.95 ? 1 : 0;
+  if (frenzyStage > 0) {
     for (const u of state.units) {
-      if (!u.isDead) u._frenzy = true;
+      if (!u.isDead) u._frenzy = frenzyStage;
     }
-    if (!state._frenzyLogged) {
+    if (frenzyStage === 1 && !state._frenzyLogged) {
       state._frenzyLogged = true;
       state.battleLog.push({
-        time: 100,
-        text: `\u{1F525} \u6218\u6597\u72C2\u70ED: \u5168\u4F53\u4F24\u5BB3+50% \u653B\u901F+30% \u51B7\u5374-30%`,
+        time: 90,
+        text: `\u{1F525} \u6218\u6597\u72C2\u70ED(\u4E00\u9636\u6BB5): \u5168\u4F53\u4F24\u5BB3+50% \u653B\u901F+30% \u51B7\u5374-30%`,
+        type: "system",
+      });
+    }
+    if (frenzyStage === 2 && !state._frenzy2Logged) {
+      state._frenzy2Logged = true;
+      state.battleLog.push({
+        time: 120,
+        text: `\u{1F525} \u6218\u6597\u72C2\u70ED(\u4E8C\u9636\u6BB5): \u5168\u4F53\u4F24\u5BB3+100% \u653B\u901F+50% \u51B7\u5374-40%`,
         type: "system",
       });
     }
@@ -5159,6 +5513,7 @@ function processTick(state) {
   updateSkills(state);
   updateAutoAttacks(state);
   updateDeaths(state);
+  updateMartyrPostmortem(state);
   updateRevivals(state);
   updateWarriorBonds(state);
   updateEquipment(state);
@@ -5183,33 +5538,70 @@ function updateStatuses(state) {
         });
       }
       if (s.type === "bite" && s.value) {
-        const dmg = s.value;
-        deferDamage(unit, dmg, state);
-        addStat2(state, unit.id, "totalDamageReceived", dmg);
-        addStat2(state, unit.id, "pureDamageReceived", dmg);
-        const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
-        if (src) {
-          const ls = Math.floor(dmg * 0.15);
-          src.currentHp = Math.min(src.maxHp, src.currentHp + ls);
-          addStat2(state, src.id, "lifeStealHealing", ls);
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const dmg = s.value;
+          deferDamage(unit, dmg, state);
+          const srcT = state.units.find(
+            (x) => x.id === s.sourceId && !x.isDead
+          );
+          if (srcT)
+            trackSkill(
+              state,
+              srcT.id,
+              srcT.def.skill.id,
+              srcT.def.skill.name,
+              dmg,
+              "pure"
+            );
+          addStat2(state, unit.id, "totalDamageReceived", dmg);
+          addStat2(state, unit.id, "pureDamageReceived", dmg);
+          const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
+          if (src) {
+            const ls = Math.floor(dmg * 0.15);
+            src.currentHp = Math.min(src.maxHp, src.currentHp + ls);
+            addStat2(state, src.id, "lifeStealHealing", ls);
+          }
+          state.battleLog.push({
+            time: state.time,
+            text: `\u{1F9B7} ${unit.def.name} \u6495\u54ACDoT ${dmg}`,
+            type: "damage",
+          });
         }
-        state.battleLog.push({
-          time: state.time,
-          text: `\u{1F9B7} ${unit.def.name} \u6495\u54ACDoT ${dmg}`,
-          type: "damage",
-        });
       }
       if (s.type === "sc_judge_dot" && s.value) {
-        const dmg = s.value;
-        deferDamage(unit, dmg, state);
-        addStat2(state, unit.id, "totalDamageReceived", dmg);
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const dmg = s.value;
+          deferDamage(unit, dmg, state);
+          const srcT = state.units.find(
+            (x) => x.id === s.sourceId && !x.isDead
+          );
+          if (srcT)
+            trackSkill(
+              state,
+              srcT.id,
+              srcT.def.skill.id,
+              srcT.def.skill.name,
+              dmg,
+              "pure"
+            );
+          addStat2(state, unit.id, "totalDamageReceived", dmg);
+        }
       }
+      const qdCycle = Math.floor(state.time);
       if (
         unit._qdRegenUntil &&
         state.time < unit._qdRegenUntil &&
-        unit._qdRegenPct
+        unit._qdRegenPct &&
+        unit._qdRegenCycle !== qdCycle
       ) {
+        unit._qdRegenCycle = qdCycle;
         const regen = Math.floor(unit.maxHp * unit._qdRegenPct);
+        addStat2(state, unit.id, "totalHealingReceived", regen);
+        addStat2(state, unit.id, "totalHealing", regen);
         unit.currentHp = Math.min(unit.maxHp, unit.currentHp + regen);
       }
       if (unit._qdInvulnUntil && state.time >= unit._qdInvulnUntil)
@@ -5226,7 +5618,7 @@ function updateStatuses(state) {
         const buffed = getEnemies(state, unit.team).filter(
           (e) => !e.isDead && e.statuses && e.statuses.length > 0
         ).length;
-        unit._scDr = buffed * 0.05;
+        unit._scDr = buffed * 0.06;
       }
       if (unit.def.id === "qm" && !isRuined(unit) && unit.statuses.length > 0) {
         const negTypes = [
@@ -5266,93 +5658,202 @@ function updateStatuses(state) {
         unit._qmUntil = void 0;
       }
       if (s.type === "drain" && s.value) {
-        const dmg = s.value;
-        deferDamage(unit, dmg, state);
-        addStat2(state, unit.id, "totalDamageReceived", dmg);
-        addStat2(state, unit.id, "magicalDamageReceived", dmg);
-        const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
-        if (!src) {
-          s.remainingSeconds = 0;
-        } else {
-          const ls = Math.floor(dmg * 0.25);
-          src.currentHp = Math.min(src.maxHp, src.currentHp + ls);
-          addStat2(state, src.id, "lifeStealHealing", ls);
-        }
-        if (s.remainingSeconds > 0) {
+        if (s.remainingSeconds <= 0.11 && !s._curseApplied) {
+          s._curseApplied = true;
+          unit.statuses.push({
+            type: "curse" /* Curse */,
+            remainingSeconds: 4,
+            stacks: 1,
+          });
           state.battleLog.push({
             time: state.time,
-            text: `\u{1F480} ${unit.def.name} \u5438\u9B42 ${dmg}`,
+            text: `\u2620 ${unit.def.name} \u5438\u9B42\u7ED3\u675F: \u8BC5\u54924s`,
+            type: "status",
+          });
+        }
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const dmg = s.value;
+          deferDamage(unit, dmg, state);
+          const srcT = state.units.find(
+            (x) => x.id === s.sourceId && !x.isDead
+          );
+          if (srcT)
+            trackSkill(
+              state,
+              srcT.id,
+              srcT.def.skill.id,
+              srcT.def.skill.name,
+              dmg,
+              "magical"
+            );
+          addStat2(state, unit.id, "totalDamageReceived", dmg);
+          addStat2(state, unit.id, "magicalDamageReceived", dmg);
+          const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
+          if (!src) {
+            s.remainingSeconds = 0;
+          } else {
+            const ls = Math.floor(dmg * 0.15);
+            src.currentHp = Math.min(src.maxHp, src.currentHp + ls);
+            addStat2(state, src.id, "lifeStealHealing", ls);
+            addStat2(state, src.id, "totalDamageDealt", dmg);
+            addStat2(state, src.id, "skillDamage", dmg);
+            addStat2(state, src.id, "magicalDamage", dmg);
+          }
+          if (s.remainingSeconds > 0) {
+            state.battleLog.push({
+              time: state.time,
+              text: `\u{1F480} ${unit.def.name} \u5438\u9B42 ${dmg}`,
+              type: "damage",
+            });
+            if (s.remainingSeconds <= 0.11 && !s._curseApplied) {
+              s._curseApplied = true;
+              unit.statuses.push({
+                type: "curse" /* Curse */,
+                remainingSeconds: 4,
+                stacks: 1,
+              });
+              state.battleLog.push({
+                time: state.time,
+                text: `\u2620 ${unit.def.name} \u5438\u9B42\u7ED3\u675F: \u8BC5\u54924s`,
+                type: "status",
+              });
+            }
+          }
+        }
+      }
+      if (s.type === "doom" && s.value) {
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const dmg = s.value;
+          deferDamage(unit, dmg, state);
+          const srcT = state.units.find(
+            (x) => x.id === s.sourceId && !x.isDead
+          );
+          if (srcT)
+            trackSkill(
+              state,
+              srcT.id,
+              srcT.def.skill.id,
+              srcT.def.skill.name,
+              dmg,
+              "pure"
+            );
+          addStat2(state, unit.id, "totalDamageReceived", dmg);
+          addStat2(state, unit.id, "pureDamageReceived", dmg);
+          const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
+          if (src) {
+            addStat2(state, src.id, "totalDamageDealt", dmg);
+            addStat2(state, src.id, "pureDamage", dmg);
+            trackTalent(state, src.id, "\u672B\u65E5(DoT)", dmg, "damage");
+          }
+          state.battleLog.push({
+            time: state.time,
+            text: `\u{1F480} ${unit.def.name} \u672B\u65E5 ${dmg}`,
             type: "damage",
           });
         }
       }
-      if (s.type === "doom" && s.value) {
-        const dmg = s.value;
-        deferDamage(unit, dmg, state);
-        addStat2(state, unit.id, "totalDamageReceived", dmg);
-        addStat2(state, unit.id, "pureDamageReceived", dmg);
-        const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
-        if (src) {
-          addStat2(state, src.id, "totalDamageDealt", dmg);
-          addStat2(state, src.id, "pureDamage", dmg);
-          trackTalent(state, src.id, "\u672B\u65E5(DoT)", dmg, "damage");
-        }
-        state.battleLog.push({
-          time: state.time,
-          text: `\u{1F480} ${unit.def.name} \u672B\u65E5 ${dmg}`,
-          type: "damage",
-        });
-      }
       if (s.type === "bsxl_dot" && s.value) {
-        const dmg = s.value;
-        deferDamage(unit, dmg, state);
-        addStat2(state, unit.id, "totalDamageReceived", dmg);
-        addStat2(state, unit.id, "magicalDamageReceived", dmg);
-        const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
-        if (src) {
-          addStat2(state, src.id, "totalDamageDealt", dmg);
-          addStat2(state, src.id, "skillDamage", dmg);
-          addStat2(state, src.id, "magicalDamage", dmg);
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const dmg = s.value;
+          deferDamage(unit, dmg, state);
+          const srcT = state.units.find(
+            (x) => x.id === s.sourceId && !x.isDead
+          );
+          if (srcT)
+            trackSkill(
+              state,
+              srcT.id,
+              srcT.def.skill.id,
+              srcT.def.skill.name,
+              dmg,
+              "magical"
+            );
+          addStat2(state, unit.id, "totalDamageReceived", dmg);
+          addStat2(state, unit.id, "magicalDamageReceived", dmg);
+          const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
+          if (src) {
+            addStat2(state, src.id, "totalDamageDealt", dmg);
+            addStat2(state, src.id, "skillDamage", dmg);
+            addStat2(state, src.id, "magicalDamage", dmg);
+          }
+          state.battleLog.push({
+            time: state.time,
+            text: `\u2744\uFE0F ${unit.def.name} \u51B0\u971CDoT ${dmg}`,
+            type: "damage",
+          });
         }
-        state.battleLog.push({
-          time: state.time,
-          text: `\u2744\uFE0F ${unit.def.name} \u51B0\u971CDoT ${dmg}`,
-          type: "damage",
-        });
       }
       if (s.type === "hlyl_burn" && s.value) {
-        const dmg = s.value;
-        deferDamage(unit, dmg, state);
-        addStat2(state, unit.id, "totalDamageReceived", dmg);
-        addStat2(state, unit.id, "magicalDamageReceived", dmg);
-        const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
-        if (src) {
-          addStat2(state, src.id, "totalDamageDealt", dmg);
-          addStat2(state, src.id, "skillDamage", dmg);
-          addStat2(state, src.id, "magicalDamage", dmg);
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const dmg = s.value;
+          deferDamage(unit, dmg, state);
+          const srcT = state.units.find(
+            (x) => x.id === s.sourceId && !x.isDead
+          );
+          if (srcT)
+            trackSkill(
+              state,
+              srcT.id,
+              srcT.def.skill.id,
+              srcT.def.skill.name,
+              dmg,
+              "magical"
+            );
+          addStat2(state, unit.id, "totalDamageReceived", dmg);
+          addStat2(state, unit.id, "magicalDamageReceived", dmg);
+          const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
+          if (src) {
+            addStat2(state, src.id, "totalDamageDealt", dmg);
+            addStat2(state, src.id, "skillDamage", dmg);
+            addStat2(state, src.id, "magicalDamage", dmg);
+          }
+          state.battleLog.push({
+            time: state.time,
+            text: `\u{1F525} ${unit.def.name} \u71C3\u70E7 ${dmg}`,
+            type: "damage",
+          });
         }
-        state.battleLog.push({
-          time: state.time,
-          text: `\u{1F525} ${unit.def.name} \u71C3\u70E7 ${dmg}`,
-          type: "damage",
-        });
       }
       if (s.type === "sjsn_dot" && s.value) {
-        const dmg = s.value;
-        deferDamage(unit, dmg, state);
-        addStat2(state, unit.id, "totalDamageReceived", dmg);
-        addStat2(state, unit.id, "magicalDamageReceived", dmg);
-        const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
-        if (src) {
-          addStat2(state, src.id, "totalDamageDealt", dmg);
-          addStat2(state, src.id, "skillDamage", dmg);
-          addStat2(state, src.id, "magicalDamage", dmg);
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const dmg = s.value;
+          deferDamage(unit, dmg, state);
+          const srcT = state.units.find(
+            (x) => x.id === s.sourceId && !x.isDead
+          );
+          if (srcT)
+            trackSkill(
+              state,
+              srcT.id,
+              srcT.def.skill.id,
+              srcT.def.skill.name,
+              dmg,
+              "magical"
+            );
+          addStat2(state, unit.id, "totalDamageReceived", dmg);
+          addStat2(state, unit.id, "magicalDamageReceived", dmg);
+          const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
+          if (src) {
+            addStat2(state, src.id, "totalDamageDealt", dmg);
+            addStat2(state, src.id, "skillDamage", dmg);
+            addStat2(state, src.id, "magicalDamage", dmg);
+          }
+          state.battleLog.push({
+            time: state.time,
+            text: `\u{1F9CA} ${unit.def.name} \u51B0\u5C01DoT ${dmg}`,
+            type: "damage",
+          });
         }
-        state.battleLog.push({
-          time: state.time,
-          text: `\u{1F9CA} ${unit.def.name} \u51B0\u5C01DoT ${dmg}`,
-          type: "damage",
-        });
       }
       if (s.type === "trap_dot" && s.value) {
         const cycle = Math.floor(state.time / 2);
@@ -5361,6 +5862,18 @@ function updateStatuses(state) {
           const casterAtk = s.casterAtk || 0;
           const dmg = Math.floor(casterAtk * 0.95 + s.value);
           deferDamage(unit, dmg, state);
+          const srcT = state.units.find(
+            (x) => x.id === s.sourceId && !x.isDead
+          );
+          if (srcT)
+            trackSkill(
+              state,
+              srcT.id,
+              srcT.def.skill.id,
+              srcT.def.skill.name,
+              dmg,
+              "pure"
+            );
           addStat2(state, unit.id, "totalDamageReceived", dmg);
           addStat2(state, unit.id, "pureDamageReceived", dmg);
           const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
@@ -5383,42 +5896,119 @@ function updateStatuses(state) {
         }
       }
       if (s.type === "lxgz_heal_dot" && s.value) {
-        const heal = Math.floor(
-          s.value + (unit.maxHp - unit.currentHp) * (s.lostPct || 0)
-        );
-        let antiHealMult =
-          unit._antiHealMult &&
-          unit._antiHealUntil &&
-          unit._antiHealUntil > state.time
-            ? unit._antiHealMult
-            : 1;
-        unit.currentHp = Math.min(
-          unit.maxHp,
-          unit.currentHp + Math.floor(heal * antiHealMult)
-        );
-        addStat2(state, unit.id, "totalHealingReceived", heal);
-        state.battleLog.push({
-          time: state.time,
-          text: `\u{1F3B6} ${unit.def.name} \u7434\u97F3\u56DE\u590D ${heal}`,
-          type: "heal",
-        });
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const heal = Math.floor(
+            s.value + (unit.currentAttack || unit.def.stats.attack) * 0.1
+          );
+          let antiHealMult =
+            unit._antiHealMult &&
+            unit._antiHealUntil &&
+            unit._antiHealUntil > state.time
+              ? unit._antiHealMult
+              : 1;
+          const appliedHeal = Math.floor(heal * antiHealMult);
+          unit.lastHeal = { value: appliedHeal, time: state.time };
+          unit.currentHp = Math.min(unit.maxHp, unit.currentHp + appliedHeal);
+          addStat2(state, unit.id, "totalHealingReceived", heal);
+          const src = state.units.find((x) => x.id === s.sourceId);
+          if (src) {
+            addStat2(state, src.id, "totalHealingDone", appliedHeal);
+            addStat2(state, src.id, "totalHealing", appliedHeal);
+          }
+          state.battleLog.push({
+            time: state.time,
+            text: `\u{1F3B6} ${unit.def.name} \u7434\u97F3\u56DE\u590D ${heal}`,
+            type: "heal",
+          });
+        }
+      }
+      if (
+        (s.type === "lyz_heal_dot" || s.type === "hbfl_heal_dot") &&
+        s.value
+      ) {
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const heal = s.value;
+          unit.currentHp = Math.min(unit.maxHp, unit.currentHp + heal);
+          addStat2(state, unit.id, "totalHealingReceived", heal);
+          const src = state.units.find((x) => x.id === s.sourceId);
+          if (src) {
+            addStat2(state, src.id, "totalHealingDone", heal);
+            addStat2(state, src.id, "totalHealing", heal);
+          }
+          state.battleLog.push({
+            time: state.time,
+            text: `\u{1F49A} ${unit.def.name} \u6BCF\u79D2\u6CBB\u7597 +${heal}`,
+            type: "heal",
+          });
+        }
+      }
+      if (s.type === "xd_dot" && s.value) {
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const dmg = s.value;
+          deferDamage(unit, dmg, state);
+          addStat2(state, unit.id, "totalDamageReceived", dmg);
+          addStat2(state, unit.id, "pureDamageReceived", dmg);
+          const src = state.units.find((x) => x.id === s.sourceId);
+          if (src) {
+            addStat2(state, src.id, "totalDamageDealt", dmg);
+            addStat2(state, src.id, "pureDamage", dmg);
+          }
+          state.battleLog.push({
+            time: state.time,
+            text: `\u271D ${unit.def.name} \u6B89\u9053\u7EAF\u7CB9 ${dmg}`,
+            type: "damage",
+          });
+        }
       }
       if (s.type === "bslr_dot" && s.value) {
-        const dmg = s.value;
-        deferDamage(unit, dmg, state);
-        addStat2(state, unit.id, "totalDamageReceived", dmg);
-        addStat2(state, unit.id, "physicalDamageReceived", dmg);
-        const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
-        if (src) {
-          addStat2(state, src.id, "totalDamageDealt", dmg);
-          addStat2(state, src.id, "skillDamage", dmg);
-          addStat2(state, src.id, "physicalDamage", dmg);
+        const bslrSrc = state.units.find(
+          (x) => x.id === s.sourceId && !x.isDead
+        );
+        if (
+          bslrSrc?.def.id === "bslr" &&
+          !(bslrSrc._bslrBreakUntil && bslrSrc._bslrBreakUntil > state.time) &&
+          Math.random() < 0.4
+        ) {
+          unit._antiHealMult = 0.75;
+          unit._antiHealUntil = state.time + 2;
         }
-        state.battleLog.push({
-          time: state.time,
-          text: `\u2744\uFE0F ${unit.def.name} \u6301\u7EED\u5C04\u51FB ${dmg}`,
-          type: "damage",
-        });
+        const cycle = Math.floor(state.time);
+        if (s.lastCycle !== cycle) {
+          s.lastCycle = cycle;
+          const dmg = s.value;
+          deferDamage(unit, dmg, state);
+          const srcT = state.units.find(
+            (x) => x.id === s.sourceId && !x.isDead
+          );
+          if (srcT)
+            trackSkill(
+              state,
+              srcT.id,
+              srcT.def.skill.id,
+              srcT.def.skill.name,
+              dmg,
+              "physical"
+            );
+          addStat2(state, unit.id, "totalDamageReceived", dmg);
+          addStat2(state, unit.id, "physicalDamageReceived", dmg);
+          const src = state.units.find((x) => x.id === s.sourceId && !x.isDead);
+          if (src) {
+            addStat2(state, src.id, "totalDamageDealt", dmg);
+            addStat2(state, src.id, "skillDamage", dmg);
+            addStat2(state, src.id, "physicalDamage", dmg);
+          }
+          state.battleLog.push({
+            time: state.time,
+            text: `\u2744\uFE0F ${unit.def.name} \u6301\u7EED\u5C04\u51FB ${dmg}`,
+            type: "damage",
+          });
+        }
       }
       if (s.type === "regen" /* Regen */ && s.value) {
         const heal = Math.floor(unit.maxHp * s.value);
@@ -5542,16 +6132,28 @@ function updateStatuses(state) {
     if (
       unit.def.id === "hl" &&
       !unit._hlRageTriggered &&
-      unit.currentHp / unit.maxHp < 0.25
+      unit.currentHp / unit.maxHp < 0.6
     ) {
       unit._hlRageTriggered = true;
-      unit._hlRageAtkMult = 1.35;
+      unit._hlRageAtkMult = 1.3;
+      unit._hlRageSpeedMult = 1.5;
+      unit._hlRageDrMult = 0.2;
       unit._immuneAbnormal = true;
+      unit._hlRageCycle = Math.floor(state.time / 3);
       state.battleLog.push({
         time: state.time,
-        text: `\u{1F621} ${unit.def.name} \u6FC0\u6012: \u653B+35% \u653B\u901F+20% \u514D\u75AB\u5F02\u5E38`,
+        text: `\u{1F621} ${unit.def.name} \u6FC0\u6012: \u6BCF3s\u59312%HP\uFF0C\u51CF\u4F2420% \u653B+30% \u653B\u901F+50% \u514D\u75AB\u5F02\u5E38`,
         type: "status",
       });
+    }
+    if (unit.def.id === "hl" && unit._hlRageTriggered) {
+      const rageCycle = Math.floor(state.time / 3);
+      if (unit._hlRageCycle !== rageCycle) {
+        unit._hlRageCycle = rageCycle;
+        const selfDmg = Math.max(1, Math.floor(unit.maxHp * 0.02));
+        unit.currentHp = Math.max(1, unit.currentHp - selfDmg);
+        addStat2(state, unit.id, "pureDamageTaken", selfDmg);
+      }
     }
     if (
       unit._ldshzDefUntil &&
@@ -5582,6 +6184,11 @@ function updateStatuses(state) {
       unit._slzsDr = void 0;
       unit._slzsGuardUntil = void 0;
     }
+    if (unit._bslrDebuffUntil && state.time >= unit._bslrDebuffUntil) {
+      unit._bslrAtkDown = void 0;
+      unit._bslrSlowDown = void 0;
+      unit._bslrDebuffUntil = void 0;
+    }
     if (unit._linkUntil && state.time >= unit._linkUntil) {
       unit._linkOwnerId = void 0;
       unit._linkUntil = void 0;
@@ -5601,17 +6208,20 @@ function updateStatuses(state) {
       addStat2(state, unit.id, "pureDamageReceived", hd2);
       state.battleLog.push({
         time: state.time,
-        text: `\u{1F528} ${unit.def.name} \u51A5\u706B\u5EF6\u8FDF\u4F24\u5BB3: ${hd2}`,
+        text: `\u{1F528} ${unit.def.name} \u51A5\u706B\u5EF6\u8FDF\u4F24\u5BB3(75%\u7EAF\u7CB9): ${hd2}`,
         type: "damage",
       });
       unit._hammerDueAt = void 0;
       unit._hammerDelayedDmg = void 0;
     }
+    const lyzCycle = Math.floor(state.time);
     if (
       unit.def.id === "lyz" &&
       unit.row !== 0 /* Front */ &&
-      !isRuined(unit)
+      !isRuined(unit) &&
+      unit._lyzCycle !== lyzCycle
     ) {
+      unit._lyzCycle = lyzCycle;
       const awayDmg = Math.floor(unit.maxHp * 0.03);
       unit.currentHp -= awayDmg;
       addStat2(state, unit.id, "totalDamageReceived", awayDmg);
@@ -5677,8 +6287,8 @@ function updateStatuses(state) {
       const want = Math.min(5, Math.floor(lostPct / 0.12));
       if (want !== (unit._kzsLayers || 0)) {
         unit._kzsLayers = want;
-        unit._kzsAtkMult = 1 + want * 0.04;
-        unit._kzsDr = want * 0.06;
+        unit._kzsAtkMult = 1 + want * 0.035;
+        unit._kzsDr = want * 0.08;
       }
     }
     if (unit.def.id === "hyz" && !isRuined(unit)) {
@@ -5711,7 +6321,13 @@ function updateStatuses(state) {
       unit.currentHp -= dmg;
       addStat2(state, unit.id, "totalDamageReceived", dmg);
     }
-    if (unit.def.id === "crzs" && !isRuined(unit)) {
+    const crzsCycle = Math.floor(state.time);
+    if (
+      unit.def.id === "crzs" &&
+      !isRuined(unit) &&
+      unit._crzsCycle !== crzsCycle
+    ) {
+      unit._crzsCycle = crzsCycle;
       const sameRowEnemies = getEnemies(state, unit.team).filter(
         (e) => e.row === unit.row
       );
@@ -5721,11 +6337,14 @@ function updateStatuses(state) {
         addStat2(state, unit.id, "totalDamageDealt", dmg);
       }
     }
+    const ppCycle = Math.floor(state.time);
     if (
       unit.def.id === "pp" &&
       !isRuined(unit) &&
-      unit.statuses.some((s) => s.type === "sleep" /* Sleep */)
+      unit.statuses.some((s) => s.type === "sleep" /* Sleep */) &&
+      unit._ppRegenCycle !== ppCycle
     ) {
+      unit._ppRegenCycle = ppCycle;
       const neg = [
         "stun",
         "petrify",
@@ -5797,17 +6416,110 @@ function updateStatuses(state) {
         }
       }
     }
+    const shouldClearBuffs = unit.statuses.some(
+      (s) => s.remainingSeconds <= 0 && s.clearBuffsOnEnd
+    );
+    if (shouldClearBuffs) {
+      const NEG = [
+        "stun",
+        "sleep",
+        "petrify",
+        "freeze",
+        "bind",
+        "burn",
+        "curse",
+        "poison",
+        "doom",
+        "ruin",
+        "silence",
+        "disarm",
+        "slow",
+        "armorBreak",
+        "sc_judge_dot",
+      ];
+      unit.statuses = unit.statuses.filter((x) =>
+        NEG.includes(String(x.type).toLowerCase())
+      );
+    }
     unit.statuses = unit.statuses.filter((s) => s.remainingSeconds > 0);
+    if (unit._mageAtkLayers?.length) {
+      unit._mageAtkLayers = unit._mageAtkLayers.filter(
+        (l) => l.expire > state.time
+      );
+      const sum = unit._mageAtkLayers.reduce((s, l) => s + l.value, 0);
+      unit._mageAtkMult = sum > 0 ? 1 + sum : void 0;
+    }
+    if (unit._hunterBondLayers?.length) {
+      unit._hunterBondLayers = unit._hunterBondLayers.filter(
+        (l) => l.expire > state.time
+      );
+    }
+    const decay = unit._undeadDecay;
+    if (decay && !unit.isDead && state.time >= decay.startAt) {
+      decay.acc += 0.1;
+      if (decay.acc >= 1 - 1e-6) {
+        decay.acc -= 1;
+        const loss = Math.max(1, Math.floor(unit.maxHp * decay.pct));
+        unit.currentHp -= loss;
+        addStat2(state, unit.id, "pureDamageTaken", loss);
+      }
+    }
+    if (unit._drowsyUntil && state.time >= unit._drowsyUntil) {
+      unit.hitRateMod = (unit.hitRateMod || 0) + (unit._drowsyApplied || 0.75);
+      unit._drowsyUntil = void 0;
+      unit._drowsyApplied = void 0;
+    }
+    const NEG_STATUS = [
+      "stun",
+      "sleep",
+      "petrify",
+      "freeze",
+      "bind",
+      "burn",
+      "curse",
+      "poison",
+      "doom",
+      "ruin",
+      "silence",
+      "disarm",
+      "slow",
+      "armorBreak",
+    ];
+    const negNow = unit.statuses.filter((s) =>
+      NEG_STATUS.includes(String(s.type).toLowerCase())
+    ).length;
+    if (negNow > (unit._negCountPrev || 0)) {
+      for (const hyz2 of state.units.filter(
+        (x) =>
+          x.team === unit.team &&
+          !x.isDead &&
+          x.def.id === "hyz" &&
+          !isRuined(x)
+      )) {
+        hyz2._hyzStacks = Math.min(5, (hyz2._hyzStacks || 0) + 1);
+      }
+    }
+    unit._negCountPrev = negNow;
     if (unit._mageAtkExpire && state.time >= unit._mageAtkExpire) {
-      unit._mageAtkMult = void 0;
       unit._mageAtkExpire = void 0;
+      if (!unit._mageAtkLayers?.length) unit._mageAtkMult = void 0;
     }
     if (unit._hlRoarExpire && state.time >= unit._hlRoarExpire) {
-      unit.currentAttack = Math.floor(
-        unit.currentAttack / (1 - (unit._hlRoarAtk ?? 0.2))
-      );
-      unit._hlRoarAtk = void 0;
-      unit._hlRoarExpire = void 0;
+      if (unit._hlRoarStage2) {
+        unit.currentAttack = Math.floor(
+          (unit.currentAttack / (1 - (unit._hlRoarAtk ?? 0.3))) * 0.85
+        );
+        unit._hlRoarAtk = 0.15;
+        unit._hlRoarExpire = state.time + 8;
+        unit._hlRoarStage2 = false;
+      } else {
+        unit.currentAttack = Math.floor(
+          unit.currentAttack / (1 - (unit._hlRoarAtk ?? 0.15))
+        );
+        unit._hlRoarAtk = void 0;
+        unit._hlRoarExpire = void 0;
+        unit._hlRoarStage2 = void 0;
+      }
     }
     if (unit._tauntExpire && state.time >= unit._tauntExpire) {
       unit._tauntTarget = void 0;
@@ -5819,8 +6531,9 @@ function updateStatuses(state) {
         unit._ylRoarCycle = cycle;
         const lost = Math.min(0.2, unit._ylRoarMult - 1);
         unit._ylRoarMult = Math.max(1, unit._ylRoarMult - 0.2);
-        if (state._ylRoarDecayCycle !== cycle) {
-          state._ylRoarDecayCycle = cycle;
+        const decayKey = `_ylRoarDecayCycle_${unit.team}`;
+        if (state[decayKey] !== cycle) {
+          state[decayKey] = cycle;
           const ylOwner = state.units.find(
             (x) => x.team === unit.team && x.def.id === "yl" && !x.isDead
           );
@@ -5921,7 +6634,8 @@ function updateCooldowns(state) {
   for (const unit of getAlive(state)) {
     if (unit._ymfsLeft) continue;
     if (unit.cooldownRemaining > 0) {
-      unit.cooldownRemaining -= unit._frenzy ? 0.13 : 0.1;
+      unit.cooldownRemaining -=
+        unit._frenzy === 2 ? 0.14 : unit._frenzy ? 0.13 : 0.1;
     }
   }
 }
@@ -5984,22 +6698,29 @@ function updateAutoAttacks(state) {
     const baseInt = unit.def.stats.attackInterval;
     let atkInterval = baseInt;
     if (unit._xldsStacks && unit._xldsExpire && state.time < unit._xldsExpire) {
-      atkInterval *= 1 - unit._xldsStacks * 0.08;
+      atkInterval *= 1 - unit._xldsStacks * 0.1;
     }
     if (unit._inspireAtkUntil && state.time < unit._inspireAtkUntil) {
-      atkInterval *= 0.88;
+      atkInterval *= 0.75;
     }
     if (unit.statuses.some((s) => s.type === "bloodrage" /* Bloodrage */)) {
       atkInterval *= 0.6;
     }
-    if (unit._hlRageTriggered) {
-      atkInterval *= 0.8;
+    if (unit._hlRageSpeedMult) {
+      atkInterval *= 1 / unit._hlRageSpeedMult;
     }
     if (unit._frenzy) {
-      atkInterval *= 0.7;
+      atkInterval *= unit._frenzy === 2 ? 0.5 : 0.7;
     }
     if (unit._slowUntil && state.time < unit._slowUntil) {
       atkInterval *= 1.25;
+    }
+    if (
+      unit._bslrSlowDown &&
+      unit._bslrDebuffUntil &&
+      state.time < unit._bslrDebuffUntil
+    ) {
+      atkInterval *= 1 + unit._bslrSlowDown;
     }
     unit.attackTimer -= 0.1 * (baseInt / atkInterval);
     if (unit.attackTimer <= 0) {
@@ -6034,7 +6755,7 @@ function updateAutoAttacks(state) {
         if (unit.def.id === "mds") atkRatio = 0.85;
         let stealthBonus = false;
         if (unit.def.id === "yl" && unit._stealthAttack) {
-          atkRatio *= 2.1;
+          atkRatio *= 2.4;
           stealthBonus = true;
         }
         const hunterCntP1 = state.units.filter(
@@ -6053,6 +6774,7 @@ function updateAutoAttacks(state) {
           unit.def.id === "zq"
             ? "magical" /* Magical */
             : "physical"; /* Physical */
+        unit._cutinDmgRed = void 0;
         const result = calcDamage(unit, target, atkRatio, autoType, {
           evasion: target.evasion,
           hitRateMod: (unit.hitRateMod || 0) - (unit._hdHitChance ? 0.15 : 0),
@@ -6090,7 +6812,7 @@ function updateAutoAttacks(state) {
           result.finalDamage > 0 &&
           Math.random() < 0.5
         ) {
-          result.finalDamage = Math.floor(result.finalDamage * 0.6);
+          result.finalDamage = Math.floor(result.finalDamage * 0.7);
           target._dlReduced = true;
         }
         deferDamage(target, result.finalDamage, state);
@@ -6100,7 +6822,7 @@ function updateAutoAttacks(state) {
           result.finalDamage > 0 &&
           !target._dlReduced
         ) {
-          const reflect = Math.floor(target.currentAttack * 0.1);
+          const reflect = Math.floor(target.currentAttack * 0.12);
           unit.currentHp -= reflect;
           addStat2(state, target.id, "totalDamageDealt", reflect);
           addStat2(state, unit.id, "totalDamageReceived", reflect);
@@ -6135,7 +6857,7 @@ function updateAutoAttacks(state) {
             addStat2(state, unit.id, "lifeStealHealing", ls);
             target.statuses.push({
               type: "armorBreak" /* ArmorBreak */,
-              remainingSeconds: 6,
+              remainingSeconds: 7,
               stacks: 1,
             });
             trackTalent(
@@ -6147,7 +6869,7 @@ function updateAutoAttacks(state) {
             );
             unit._zqzPower = false;
           }
-          if ((unit._zqzHits || 0) % 4 === 0) unit._zqzPower = true;
+          if ((unit._zqzHits || 0) % 3 === 0) unit._zqzPower = true;
         }
         if (unit.def.id === "klb" && result.finalDamage > 0) {
           const kldd2 = state.units.find(
@@ -6227,25 +6949,6 @@ function updateAutoAttacks(state) {
             type: "antiHeal" /* AntiHeal */,
             remainingSeconds: 4,
             stacks: 1,
-          });
-        }
-        if (
-          unit.def.id === "mds" &&
-          !isRuined(unit) &&
-          result.finalDamage > 0 &&
-          target.statuses.some((s) => s.type === "bind" /* Bind */) &&
-          Math.random() < 0.35
-        ) {
-          target.statuses.push({
-            type: "petrify" /* Petrify */,
-            remainingSeconds: 2,
-            stacks: 1,
-          });
-          trackTalent(state, unit.id, "\u77F3\u5316(35%)", 1, "count");
-          state.battleLog.push({
-            time: state.time,
-            text: `\u{1F40D} ${unit.def.name} \u77F3\u5316 ${target.def.name}`,
-            type: "status",
           });
         }
         if (
@@ -6415,7 +7118,7 @@ function updateAutoAttacks(state) {
               !isRuined(x) &&
               (!x._xblrAtkCdUntil || x._xblrAtkCdUntil <= state.time)
           );
-          if (xblr2 && Math.random() < 0.1) {
+          if (xblr2 && Math.random() < 0.4) {
             const xblrEnemies = getEnemies(state, xblr2.team).filter(
               (e) =>
                 !e.statuses?.some((s) => s.type === "stealth" /* Stealth */)
@@ -6431,7 +7134,7 @@ function updateAutoAttacks(state) {
               });
               deferDamage(xt, xr.finalDamage, state);
               xt.currentHp -= xr.finalDamage;
-              xblr2._xblrAtkCdUntil = state.time + 3;
+              xblr2._xblrAtkCdUntil = state.time + 8;
               addStat2(state, xblr2.id, "totalDamageDealt", xr.finalDamage);
               addStat2(state, xblr2.id, "autoAttackDamage", xr.finalDamage);
               state.battleLog.push({
@@ -6465,8 +7168,8 @@ function updateAutoAttacks(state) {
             const beastCnt = state.units.filter(
               (u) => u.team === unit.team && !u.isDead && u.def.race === "beast"
             ).length;
-            if (beastCnt >= 3 && target.currentHp / target.maxHp < 0.5) {
-              const purePct = beastCnt >= 4 ? 0.15 : 0.07;
+            if (beastCnt >= 3 && target.currentHp / target.maxHp < 0.75) {
+              const purePct = beastCnt >= 4 ? 0.15 : 0.06;
               const pureDmg = Math.floor(unit.currentAttack * purePct);
               target.currentHp -= pureDmg;
               addStat2(state, unit.id, "totalDamageDealt", pureDmg);
@@ -6491,7 +7194,7 @@ function updateAutoAttacks(state) {
           }
         }
       }
-      const asBonus = Math.min(unit.attackSpeedBonus || 0, 1);
+      const asBonus = Math.min(unit.attackSpeedBonus || 0, 1.5);
       let spdMult = 1;
       if (
         unit._xldsStacks &&
@@ -6507,8 +7210,8 @@ function updateAutoAttacks(state) {
         (u) => u.team === unit.team && !u.isDead && u.def.race === "hunter"
       ).length;
       if (hunterCnt >= 3 && unit.def.race === "hunter") {
-        const extraEvery = hunterCnt >= 4 ? 5 : 7;
-        const extraDmgRatio = hunterCnt >= 4 ? 0.05 : 0.05;
+        const extraEvery = hunterCnt >= 4 ? 5 : 6;
+        const extraDmgRatio = hunterCnt >= 4 ? 0.7 : 0.35;
         if (unit._attackCount % extraEvery === 0) {
           const extraEnemies = getEnemies(state, unit.team).filter(
             (e) => !targets.some((t) => t?.id === e.id)
@@ -6551,28 +7254,35 @@ function updateDeaths(state) {
   for (const u of state.units) {
     if (u.currentHp > 0 || u.isDead) continue;
     u.isDead = true;
-    if (u.def.id === "xd") {
+    const martyr = state.units.find(
+      (x) => x.team === u.team && x.def.id === "xd"
+    );
+    if (martyr) {
       for (const e of state.units.filter(
         (x) => x.team !== u.team && !x.isDead
       )) {
-        const dr = Math.floor(u.currentAttack * 1.5);
+        const dr = Math.floor(martyr.currentAttack * 0.3);
         e.currentHp -= dr;
-        addStat2(state, u.id, "totalDamageDealt", dr);
+        addStat2(state, martyr.id, "totalDamageDealt", dr);
+        addStat2(state, martyr.id, "pureDamage", dr);
       }
       for (const a of state.units.filter(
         (x) => x.team === u.team && !x.isDead
       )) {
         a.currentHp = Math.min(
           a.maxHp,
-          a.currentHp + Math.floor(a.maxHp * 0.3)
+          a.currentHp + Math.floor(a.maxHp * 0.05)
         );
-        a._xdBlessUntil = state.time + 30;
-        a._xdBlessDmg = 1.1;
-        a._xdBlessDr = 0.9;
+        addStat2(
+          state,
+          martyr.id,
+          "totalHealingDone",
+          Math.floor(a.maxHp * 0.05)
+        );
       }
       state.battleLog.push({
         time: state.time,
-        text: `\u271D ${u.def.name} \u6B89\u9053: \u654C\u65B9\u5168\u4F53150%\u7EAF\u7CB9, \u6211\u65B9\u56DE30%+\u795D\u798F`,
+        text: `\u271D ${u.def.name} \u9635\u4EA1\u89E6\u53D1\u6B89\u9053: \u654C\u65B9\u5168\u4F53\u653B\u51FB\xD730%\u7EAF\u7CB9, \u6211\u65B9\u5269\u4F59\u56DE5%\u6700\u5927HP`,
         type: "heal",
       });
     }
@@ -6649,7 +7359,7 @@ function updateDeaths(state) {
       (x) =>
         x.def.id === "srm" && x.team === u.team && !x.isDead && !isRuined(x)
     )) {
-      const hpBonus = Math.floor(srm2.maxHp * 0.1);
+      const hpBonus = Math.floor(srm2.maxHp * 0.12);
       srm2.maxHp += hpBonus;
       srm2.currentHp = Math.min(
         srm2.maxHp,
@@ -6676,10 +7386,10 @@ function updateDeaths(state) {
       killer?.def.name
     );
     if (killer && killer.def.id === "jdds" && !isRuined(killer)) {
-      const rebound = Math.floor(killer.currentAttack * 0.2);
+      const rebound = Math.floor(killer.currentAttack * 0.1);
       killer.currentHp -= rebound;
       addStat2(state, killer.id, "totalDamageReceived", rebound);
-      killer._jddsAtkBonus = (killer._jddsAtkBonus || 0) + 0.07;
+      killer._jddsAtkBonus = (killer._jddsAtkBonus || 0) + 0.08;
       killer._jddsDefBonus = (killer._jddsDefBonus || 0) + 0.03;
       trackTalent(state, killer.id, "\u51FB\u6740\u6210\u957F", 1, "count");
       state.battleLog.push({
@@ -6707,30 +7417,23 @@ function updateDeaths(state) {
         });
       }
     }
-    if (u.def.race === "undead" && !u.hasRevived) {
-      const key = `undeadRevive_${u.team}`;
-      if (state[key]) continue;
+    if (u.def.race === "undead" && !u.hasRevived && !u.isSummon) {
+      if (u._undeadReviveUsed) continue;
+      u._undeadReviveUsed = true;
       const alive = state.units.filter((x) => x.team === u.team && !x.isDead);
       const totalU = state.units.filter(
-        (x) => x.team === u.team && x.def.race === "undead"
+        (x) => x.team === u.team && x.def.race === "undead" && !x.isSummon
       ).length;
       if (totalU >= 3) {
-        state[key] = true;
         const is4 = totalU >= 4;
-        const reviveTime = is4 ? 3 : 10;
-        const regenPct = is4 ? 0.02 : 0.02;
-        const regenDur = is4 ? 8 : 8;
-        const invTimer = is4 ? 1 : 2;
-        u.reviving = {
-          timer: reviveTime,
-          hpPct: 0.01,
-          regenPct,
-          regenDur,
-          invTimer,
-        };
+        const reviveTime = is4 ? 5 : 10;
+        const hpPct = is4 ? 0.25 : 0.15;
+        const decayDelay = is4 ? 3 : 2;
+        const decayPct = is4 ? 0.02 : 0.03;
+        u.reviving = { timer: reviveTime, hpPct, decayDelay, decayPct };
         state.battleLog.push({
           time: state.time,
-          text: `\u{1F480} ${u.def.name} ${totalU}\u7F81\u7ECA\u6FC0\u6D3B\uFF0C${reviveTime}s\u540E\u590D\u6D3B(\u6BCF\u79D2\u56DE${Math.floor(regenPct * 100)}%HP\xD7${regenDur}s)\uFF01`,
+          text: `\u{1F480} ${u.def.name} ${totalU}\u7F81\u7ECA\u6FC0\u6D3B\uFF0C${reviveTime}s\u540E\u590D\u6D3B\u81F3${Math.round(hpPct * 100)}%HP(${decayDelay}s\u540E\u6BCF\u79D2\u5931\u53BB${Math.round(decayPct * 100)}%\u6700\u5927HP)`,
           type: "status",
         });
       }
@@ -6743,25 +7446,25 @@ function updateRevivals(state) {
       u.reviving.timer -= 0.1;
       if (u.reviving.timer <= 0) {
         u.isDead = false;
-        u.currentHp = Math.max(1, Math.floor(u.maxHp * 0.05));
-        u.cooldownRemaining = 0;
+        const reviveHpPct = u.reviving.hpPct ?? 0.15;
+        const revDecayDelay = u.reviving.decayDelay ?? 2;
+        const revDecayPct = u.reviving.decayPct ?? 0.03;
+        u.currentHp = Math.max(1, Math.floor(u.maxHp * reviveHpPct));
+        u.cooldownRemaining = u.def.skill.cooldown;
         u.attackTimer = 0;
         u.statuses = [];
-        const invTmr = u.reviving.invTimer ?? 2;
-        const regenPct = u.reviving.regenPct ?? 0.06;
-        const regenDur = u.reviving.regenDur ?? 8;
         u.reviving = void 0;
-        u.invincibleTimer = invTmr;
+        u.invincibleTimer = 0;
         u.hasRevived = true;
-        u.statuses.push({
-          type: "regen" /* Regen */,
-          remainingSeconds: regenDur,
-          stacks: 1,
-          value: regenPct,
-        });
+        if (u.def.id === "hyz") u._hyzStacks = 5;
+        u._undeadDecay = {
+          startAt: state.time + revDecayDelay,
+          pct: revDecayPct,
+          acc: 0,
+        };
         state.battleLog.push({
           time: state.time,
-          text: `\u{1F504} ${u.def.name} \u590D\u6D3B\uFF01\u6BCF\u79D2\u56DE${Math.floor(regenPct * 100)}%HP\xD7${regenDur}s+\u65E0\u654C${invTmr}s`,
+          text: `\u{1F504} ${u.def.name} \u590D\u6D3B\u81F3${Math.round(reviveHpPct * 100)}%HP\uFF0C\u6280\u80FD\u8FDB\u5165\u51B7\u5374\uFF1B${revDecayDelay}s\u540E\u6BCF\u79D2\u5931\u53BB${Math.round(revDecayPct * 100)}%\u6700\u5927HP`,
           type: "status",
         });
       }
@@ -6796,39 +7499,36 @@ function updateWarriorBonds(state) {
     if (wCnt < 2) continue;
     const hpPct = Math.max(0, u.currentHp / u.maxHp);
     if (wCnt >= 4) {
-      if (hpPct > 0.3) {
-        u._warriorDr = 0.2;
-        u._warriorMagMult = 2;
-      }
+      u._warriorDr = 0.15;
+      u._warriorMagMult = 1.5;
       if (hpPct < 0.8) {
-        u._warriorAtkMult = 1.2;
+        u._warriorAtkMult = 1.15;
       }
     } else if (wCnt >= 3) {
-      if (hpPct > 0.4) {
-        u._warriorDr = 0.15;
-        u._warriorMagMult = 1.5;
-      }
+      u._warriorDr = 0.1;
+      u._warriorMagMult = 1.5;
       if (hpPct < 0.6) {
         u._warriorAtkMult = 1.1;
       }
     } else {
-      if (hpPct > 0.5) {
-        u._warriorDr = 0.1;
-        u._warriorMagMult = 1.5;
-      }
+      u._warriorDr = 0.05;
+      u._warriorMagMult = 1.5;
     }
   }
-  state._warriorTimer = (state._warriorTimer || 0) + 0.1;
-  for (const u of getAlive(state)) {
-    if (u.def.race !== "warrior") continue;
-    const wCnt = state.units.filter(
-      (x) => x.team === u.team && !x.isDead && x.def.race === "warrior"
-    ).length;
+  if (!state._warriorTimerByTeam)
+    state._warriorTimerByTeam = { ally: 0, enemy: 0 };
+  for (const team of ["ally", "enemy"]) {
+    const teamWarriors = getAlive(state).filter(
+      (u) => u.team === team && u.def.race === "warrior"
+    );
+    const wCnt = teamWarriors.length;
     if (wCnt < 2) continue;
+    state._warriorTimerByTeam[team] += 0.1;
     const period = wCnt >= 4 ? 9 : wCnt >= 3 ? 11 : 13;
-    if (state._warriorTimer >= period) {
-      state._warriorTimer = 0;
-      const pct = wCnt >= 4 ? 0.08 : wCnt >= 3 ? 0.05 : 0.03;
+    if (state._warriorTimerByTeam[team] < period) continue;
+    state._warriorTimerByTeam[team] = 0;
+    const pct = wCnt >= 4 ? 0.05 : wCnt >= 3 ? 0.04 : 0.03;
+    for (const u of teamWarriors) {
       const heal = Math.floor(u.maxHp * pct);
       u.currentHp = Math.min(u.maxHp, u.currentHp + heal);
       addStat2(state, u.id, "totalHealingDone", heal);
@@ -6869,8 +7569,33 @@ function updateEquipment(state) {
     }
   }
 }
+function updateMartyrPostmortem(state) {
+  for (const xd2 of state.units.filter((u) => u.def.id === "xd" && u.isDead)) {
+    if (xd2._xdPostmortemCd === void 0) xd2._xdPostmortemCd = 0;
+    xd2._xdPostmortemCd -= 0.1;
+    if (xd2._xdPostmortemCd > 0) continue;
+    xd2._xdPostmortemCd = (xd2.def.skill.cooldown || 8) * 2;
+    const enemies = state.units.filter((u) => u.team !== xd2.team && !u.isDead);
+    if (enemies.length === 0) continue;
+    const t = enemies[Math.floor(Math.random() * enemies.length)];
+    const defSum = (t.currentPhysicalDef || 0) + (t.currentMagicalDef || 0);
+    t.statuses.push({
+      type: "xd_dot",
+      remainingSeconds: 4,
+      stacks: 1,
+      value: Math.max(1, Math.floor(defSum * 0.2 * 0.25)),
+      sourceId: xd2.id,
+      // v3.4 R2: 25%
+    });
+    state.battleLog.push({
+      time: state.time,
+      text: `\u271D ${xd2.def.name} \u9635\u4EA1\u540E\u7EE7\u7EED\u53D1\u52A8\u3010\u727A\u7272\u3011\u2192 ${t.def.name}`,
+      type: "control",
+    });
+  }
+}
 function updateVictory(state) {
-  if (state.time >= 120 && state.phase === "fighting") {
+  if (state.time >= 180 && state.phase === "fighting") {
     state.phase = "finished";
     state.winner = "draw";
     for (const u of state.units) {
@@ -6878,7 +7603,7 @@ function updateVictory(state) {
     }
     state.battleLog.push({
       time: state.time,
-      text: `\u23F0 \u6218\u6597\u8D85\u65F6(120s): \u5E73\u5C40\uFF01`,
+      text: `\u23F0 \u6218\u6597\u8D85\u65F6(180s): \u5E73\u5C40\uFF01`,
       type: "system",
     });
     return;
@@ -6972,6 +7697,7 @@ function executeSkill(caster, state, log) {
     };
   }
   state.skillStats[skey].casts += 1;
+  state.skillStats[skey].expectedHits += sk.aoe?.maxTargets || 1;
   let enemies = getEnemies(state, caster.team);
   const holyCnt = state.units.filter(
     (u) => u.team !== caster.team && !u.isDead && u.def.race === "holy"
@@ -6985,11 +7711,12 @@ function executeSkill(caster, state, log) {
       isTag("\u6CBB\u7597") ||
       (isTag("\u63A7\u5236") && holyCnt >= 3)
     ) {
-      caster._holySuppress = holyCnt >= 4 ? 0.3 : holyCnt >= 3 ? 0.2 : 0.3;
+      caster._holySuppress = holyCnt >= 4 ? 0.2 : holyCnt >= 3 ? 0.15 : 0.1;
       caster._holyMirror = holyCnt >= 4 ? 3 : holyCnt >= 3 ? 2 : 1;
     }
   }
   const allies = getAlive(state, caster.team);
+  let mageBondRolled = false;
   for (const fs of state.units.filter(
     (u) =>
       u.team === caster.team && !u.isDead && u.def.id === "xlds" && !isRuined(u)
@@ -7021,12 +7748,6 @@ function executeSkill(caster, state, log) {
       );
     }
   }
-  log.push({
-    time: state.time,
-    text: `${caster.def.name} \u91CA\u653E\u3010${sk.name}\u3011`,
-    type: "skill",
-  });
-  caster.lastSkillCast = { name: sk.name, time: state.time };
   triggerLine(caster, "skill");
   for (const xdds2 of state.units.filter(
     (u) =>
@@ -7047,10 +7768,41 @@ function executeSkill(caster, state, log) {
     (e) => e._xdTauntUntil && e._xdTauntUntil > state.time && !e.isDead
   );
   if (xdTaunt) enemies = [xdTaunt];
+  log.push({
+    time: state.time,
+    text: `${caster.def.name} \u91CA\u653E\u3010${sk.name}\u3011`,
+    type: "skill",
+    sourceId: caster.id,
+  });
+  caster.lastSkillCast = { name: sk.name, time: state.time };
+  {
+    const qd2 = state.units.find(
+      (u) =>
+        u.team === caster.team && !u.isDead && u.def.id === "qd" && !isRuined(u)
+    );
+    if (qd2) {
+      const qEnemies = getEnemies(state, qd2.team).filter((e) => !e.isDead);
+      const mates = state.units.filter((u) => u.team === qd2.team && !u.isDead);
+      if (qEnemies.length > 0 && mates.length > 0) {
+        const qt = qEnemies[Math.floor(Math.random() * qEnemies.length)];
+        const qr = calcDamage(qd2, qt, 0.03, "pure" /* Pure */, {
+          isSkill: true,
+        });
+        qt.currentHp -= qr.finalDamage;
+        addStat2(state, qd2.id, "totalDamageDealt", qr.finalDamage);
+        const ht = mates[Math.floor(Math.random() * mates.length)];
+        const h = Math.floor(qd2.currentAttack * 0.03);
+        ht.currentHp = Math.min(ht.maxHp, ht.currentHp + h);
+        addStat2(state, qd2.id, "totalHealingDone", h);
+      }
+    }
+  }
   const handler = getSkillHandler(sk.scriptId || "");
   if (handler) {
     const scriptTargets = sk.aoe
-      ? shuffle2(enemies).slice(0, sk.aoe.maxTargets || enemies.length)
+      ? sk.id === "xcl_star"
+        ? pick2x2(enemies)
+        : shuffle2(enemies).slice(0, sk.aoe.maxTargets || enemies.length)
       : [pickTarget2(enemies, sk.priority, false)].filter(Boolean);
     handler(caster, state, log, scriptTargets);
     {
@@ -7077,12 +7829,24 @@ function executeSkill(caster, state, log) {
   }
   let actionTargets = [];
   const isCutIn = sk.tags?.includes("\u5207\u5165");
+  caster._cutinDmgRed = void 0;
   if (isCutIn && enemies.length > 0) {
+    const defenderHunterCnt = enemies.filter(
+      (u) => !u.isDead && u.def.race === "hunter"
+    ).length;
+    if (defenderHunterCnt >= 3) {
+      caster._cutinDmgRed = defenderHunterCnt >= 4 ? 0.75 : 0.85;
+      log.push({
+        time: state.time,
+        text: `\u{1F3F9} \u730E\u4EBA\u7F81\u7ECA: \u53D7\u5230[\u5207\u5165]\u6280\u80FD\u4F24\u5BB3-${defenderHunterCnt >= 4 ? 25 : 15}%`,
+        type: "status",
+      });
+    }
     const enemyZfyx = getEnemies(state, caster.team).find(
       (u) => u.def.id === "zfyx" && !u.isDead && !isRuined(u)
     );
     if (enemyZfyx) {
-      caster._cutinDmgRed = 0.65;
+      caster._cutinDmgRed = (caster._cutinDmgRed ?? 1) * 0.65;
       for (const a of state.units.filter(
         (x) => x.team === enemyZfyx.team && !x.isDead
       )) {
@@ -7106,58 +7870,28 @@ function executeSkill(caster, state, log) {
       if (t) cutTargets = [t];
     }
     cutTargets = cutTargets.filter(
-      (t) => !(t.def.id === "sszs" && !isRuined(t) && Math.random() < 0.1)
+      (t) => !(t.def.id === "sszs" && !isRuined(t) && Math.random() < 0.3)
     );
     for (const t of cutTargets) {
       if (t.isDead) continue;
-      if (t.def.id === "hqs" && !isRuined(t)) {
-        t._hqsStacks = Math.min(5, (t._hqsStacks || 0) + 1);
-        t._hqsExpire = state.time + 5;
-        log.push({
-          time: state.time,
-          text: `\u{1F3AF} ${t.def.name} \u88AB\u5207\u5165: \u9632\u5FA1+${t._hqsStacks * 70}%\u653B\u51FB+${t._hqsStacks * 25}% (${t._hqsStacks}\u5C42)`,
-          type: "status",
-        });
-      }
       const targetTeam2 = state.units.filter(
         (u) => u.team === t.team && !u.isDead
       );
       const hunterCount2 = targetTeam2.filter(
         (u) => u.def.race === "hunter"
       ).length;
-      if (hunterCount2 >= 3) {
-        const is4Tier = hunterCount2 >= 4;
-        const counterResult = calcDamage(
-          t,
-          caster,
-          is4Tier ? 0.15 : 0.1,
-          // v3.8: 20/15→15/10%
-          "physical" /* Physical */,
-          {
-            isSkill: true,
-            ignoreBaseDef: is4Tier,
-          }
-        );
-        const counterDmg = counterResult.finalDamage;
-        deferDamage(caster, counterDmg, state);
-        if (counterDmg > 0) {
-          const lsMult = is4Tier ? 0.1 : 0.05;
-          const lsHeal = Math.floor(counterDmg * lsMult);
-          t.currentHp = Math.min(t.maxHp, t.currentHp + lsHeal);
-          addStat2(state, t.id, "lifeStealHealing", lsHeal);
-        }
-        caster.lastDamage = {
-          value: counterDmg,
-          time: state.time,
-          type: "physical",
-        };
-        caster.lastAction = { time: state.time, isTarget: true };
+      if (hunterCount2 >= 3 && t.def.race === "hunter") {
+        if (!t._hunterBondLayers) t._hunterBondLayers = [];
+        t._hunterBondLayers.push({
+          value: hunterCount2 >= 4 ? 0.1 : 0.05,
+          expire: state.time + (hunterCount2 >= 4 ? 40 : 25),
+        });
+        if (t._hunterBondLayers.length > 3) t._hunterBondLayers.shift();
         log.push({
           time: state.time,
-          text: `\u{1F504} ${t.def.name} \u53CD\u51FB ${pfx2(caster)}: ${counterDmg}${counterResult.isCrit ? "\u{1F4A5}" : ""}`,
-          type: "damage",
+          text: `\u{1F3F9} ${t.def.name} \u730E\u4EBA\u7F81\u7ECA\u53E0\u5C42: +${hunterCount2 >= 4 ? 10 : 5}%\u653B (${t._hunterBondLayers.length}/3)`,
+          type: "status",
         });
-        addStat2(state, t.id, "totalDamageDealt", counterDmg);
       }
     }
   }
@@ -7203,6 +7937,7 @@ function executeSkill(caster, state, log) {
       }
     }
     for (const dmgFormula of sk.damage) {
+      let hdHitCount = 0;
       for (const t of targets) {
         if (t.isDead) continue;
         actionTargets.push(t.def.name);
@@ -7210,12 +7945,12 @@ function executeSkill(caster, state, log) {
           (u) => u.team === caster.team && !u.isDead && u.def.race === "mage"
         ).length;
         const mageMdefMult =
-          mageCnt >= 4 ? 0.7 : mageCnt >= 3 ? 0.75 : mageCnt >= 2 ? 0.85 : 1;
+          mageCnt >= 4 ? 0.7 : mageCnt >= 3 ? 0.8 : mageCnt >= 2 ? 0.85 : 1;
         const origMdef = t.currentMagicalDef;
         if (mageMdefMult < 1 && dmgFormula.type === "magical")
           t.currentMagicalDef = Math.floor(t.currentMagicalDef * mageMdefMult);
         let ratio = dmgFormula.atkRatio ?? 1;
-        if (sk.id === "hx_cut") ratio = 2.3 + Math.random() * 0.3;
+        if (sk.id === "hx_cut") ratio = 2.1 + Math.random() * 0.3;
         if (sk.id === "mmx_stomp" && t.row === 0 /* Front */) ratio *= 1.2;
         if (sk.id === "mmx_stomp" && t.row === 2 /* Back */) {
           t.statuses.push({
@@ -7256,12 +7991,13 @@ function executeSkill(caster, state, log) {
           );
         }
         deferDamage(t, result.finalDamage, state);
+        const ldshzLv = t.level || 100;
         if (
           t.def.id === "ldshz" &&
           !isRuined(t) &&
           result.finalDamage > 0 &&
           (!t._ldshzShieldCd || state.time >= t._ldshzShieldCd) &&
-          Math.random() < 0.5
+          Math.random() < 0.4 + ldshzLv * 2e-3
         ) {
           t._ldshzShieldCd = state.time + 5;
           const absorbed = Math.floor(
@@ -7315,9 +8051,18 @@ function executeSkill(caster, state, log) {
             result.finalDamage = 0;
           }
         }
+        if (sk.id === "hd_slash") {
+          hdHitCount++;
+          if (hdHitCount === 3 && result.finalDamage > 0) {
+            result.finalDamage = Math.floor(result.finalDamage * 0.65);
+          }
+        }
         if (sk.id === "lbmx_smash" && result.finalDamage > 0) {
-          t._slowUntil = Math.max(t._slowUntil || 0, state.time + 5);
-          t._slowPct = 0.2;
+          t._lbmxArmorBreakUntil = Math.max(
+            t._lbmxArmorBreakUntil || 0,
+            state.time + 6
+          );
+          t._lbmxArmorBreakPct = 0.2;
         }
         if (
           caster._xldsStacks &&
@@ -7378,7 +8123,7 @@ function executeSkill(caster, state, log) {
           sk.damage?.[0]?.type === "magical" /* Magical */
         ) {
           if (Math.random() < 0.5) {
-            const reflect = Math.floor(t.currentAttack * 1.1);
+            const reflect = Math.floor(t.currentAttack * 1);
             caster.currentHp -= reflect;
             addStat2(state, t.id, "totalDamageDealt", reflect);
             addStat2(state, caster.id, "totalDamageReceived", reflect);
@@ -7470,7 +8215,7 @@ function executeSkill(caster, state, log) {
           sk.name,
           result.finalDamage,
           dmgFormula.type,
-          { hitCount: 1, expectedHits: sk.aoe?.maxTargets || 1 }
+          { hitCount: 1 }
         );
         addStat2(state, t.id, "totalDamageReceived", result.finalDamage);
         addStat2(
@@ -7494,14 +8239,20 @@ function executeSkill(caster, state, log) {
         }
         t.lastHitBy = caster.id;
         if (sk.id === "crzs_punch" && result.finalDamage > 0) {
-          const backfire = Math.floor(result.finalDamage * 0.15);
+          const backfire = Math.floor(result.finalDamage * 0.1);
           caster.currentHp -= backfire;
           addStat2(state, caster.id, "totalDamageReceived", backfire);
         }
         if (sk.id === "kldd_hammer") {
           t._hammerTarget = caster.id;
           t._hammerDueAt = state.time + 4;
-          t._hammerDelayedDmg = Math.floor(caster.currentAttack * 1);
+          t._hammerDelayedDmg = Math.floor(caster.currentAttack * 0.75);
+          const selfHeal = Math.floor(caster.currentAttack * 0.25);
+          caster.currentHp = Math.min(
+            caster.maxHp,
+            caster.currentHp + selfHeal
+          );
+          addStat2(state, caster.id, "totalHealingDone", selfHeal);
         }
         if (result.finalDamage > 0) {
           const inBuff =
@@ -7519,19 +8270,27 @@ function executeSkill(caster, state, log) {
             text: `${pfx2(caster)} \u2192 ${pfx2(t)}: ${result.finalDamage}${result.isCrit ? "\u{1F4A5}" : ""}${state._debug ? ` raw=${result.rawDamage.toFixed(0)} type=${dmgFormula.type} def=${dmgFormula.type === "magical" ? Math.floor(t.currentMagicalDef) : Math.floor(t.currentPhysicalDef)} dr=${((1 - result.afterDef / result.rawDamage) * 100).toFixed(0)}% front=${result.afterFrontRow.toFixed(0)} other=${result.afterOtherReduction.toFixed(0)} block=${result.blocked}${result.isCrit ? " crit*1.35=" + (result.finalDamage / (result.isCrit ? 1.35 : 1)).toFixed(0) : ""}` : ""}`,
             type: "damage",
           });
-          if (mageCnt >= 3 && Math.random() < 0.35) {
-            for (const m of state.units.filter(
-              (x) =>
-                x.team === caster.team && !x.isDead && x.def.race === "mage"
-            )) {
-              m._mageAtkMult = (m._mageAtkMult || 1) * 1.06;
-              m._mageAtkExpire = state.time + 20;
+          if (mageCnt >= 3 && !mageBondRolled) {
+            mageBondRolled = true;
+            const chance = mageCnt >= 4 ? 0.5 : 0.3;
+            const gain = mageCnt >= 4 ? 0.03 : 0.02;
+            const dur = mageCnt >= 4 ? 25 : 15;
+            if (Math.random() < chance) {
+              for (const m of state.units.filter(
+                (x) =>
+                  x.team === caster.team && !x.isDead && x.def.race === "mage"
+              )) {
+                const layers = m._mageAtkLayers || (m._mageAtkLayers = []);
+                layers.push({ value: gain, expire: state.time + dur });
+                m._mageAtkMult =
+                  1 + layers.reduce((sum, l) => sum + l.value, 0);
+              }
+              log.push({
+                time: state.time,
+                text: `\u2728 \u6CD5\u5E08\u7F81\u7ECA: \u5168\u4F53\u6CD5\u5E08\u653B\u51FB+${Math.round(gain * 100)}%\xD7${dur}s(\u72EC\u7ACB\u8BA1\u65F6)`,
+                type: "status",
+              });
             }
-            log.push({
-              time: state.time,
-              text: `\u2728 \u6CD5\u5E08\u7F81\u7ECA: \u5168\u4F53\u6CD5\u5E08\u653B\u51FB+6%\xD720s`,
-              type: "status",
-            });
           }
           if ((caster.lifeSteal ?? 0) > 0 && result.finalDamage > 0) {
             const lsHeal = Math.floor(
@@ -7589,24 +8348,31 @@ function executeSkill(caster, state, log) {
           remainingSeconds: 4,
           stacks: 1,
         });
+        t.statuses.push({
+          type: "hbfl_heal_dot",
+          remainingSeconds: 4,
+          stacks: 1,
+          value: Math.floor(caster.currentAttack * 0.7 + t.maxHp * 0.03),
+          sourceId: caster.id,
+        });
         state.battleLog.push({
           time: state.time,
-          text: `\u{1F9CA} ${t.def.name} \u51B0\u5C014s (\u514D\u75AB\u7269\u7406)`,
+          text: `\u{1F9CA} ${t.def.name} \u51B0\u5C014s\uFF0C\u6BCF\u79D2\u6CBB\u7597\xD74s`,
           type: "status",
         });
+        continue;
       }
       if (sk.id === "lxgz_heal") {
         t.statuses.push({
           type: "lxgz_heal_dot",
-          remainingSeconds: 5,
+          remainingSeconds: 7,
           stacks: 1,
-          value: Math.floor(caster.currentAttack * 0.25),
-          lostPct: 0.08,
+          value: Math.floor(caster.currentAttack * 0.2),
           sourceId: caster.id,
         });
         log.push({
           time: state.time,
-          text: `\u{1F3B6} ${caster.def.name} \u6CBB\u6108\u7434\u97F3 ${t.def.name}: \u6BCF\u79D225%+\u5DF2\u635F8%\xD75s`,
+          text: `\u{1F3B6} ${caster.def.name} \u6CBB\u6108\u7434\u97F3 ${t.def.name}: \u6BCF\u79D220%+\u76EE\u6807\u653B10%\xD77s`,
           type: "heal",
         });
         continue;
@@ -7641,30 +8407,33 @@ function executeSkill(caster, state, log) {
       }
       if (caster._holySuppress && sk.tags?.includes("\u6CBB\u7597")) {
         const sp = caster._holySuppress;
-        const mirrorPct =
-          caster._holyMirror === 3 ? 0.5 : caster._holyMirror === 2 ? 0.3 : 0.2;
+        const lv = caster._holyMirror;
+        const mirrorPct = lv === 3 ? 0.15 : lv === 2 ? 0.1 : 0.04;
         const rawHeal = finalAmount;
         finalAmount = Math.floor(finalAmount * (1 - sp));
-        for (const h of state.units.filter(
-          (x) => x.team !== caster.team && !x.isDead && x.def.race === "holy"
-        )) {
-          h.currentHp = Math.min(
-            h.maxHp,
-            h.currentHp + Math.floor(rawHeal * mirrorPct)
-          );
+        const recipients = state.units.filter(
+          (x) => x.team !== caster.team && !x.isDead
+        );
+        const share = Math.floor(
+          (rawHeal * mirrorPct) / Math.max(1, recipients.length)
+        );
+        for (const h of recipients) {
+          h.currentHp = Math.min(h.maxHp, h.currentHp + share);
         }
         state.battleLog.push({
           time: state.time,
-          text: `\u{1F54A} \u5723\u804C\u8005\u7F81\u7ECA: \u654C\u65B9\u6CBB\u7597-${Math.round(sp * 100)}% + \u5723\u804C\u8005\u5E73\u5206${Math.round(mirrorPct * 100)}%`,
+          text: `\u{1F54A} \u5723\u804C\u8005\u7F81\u7ECA: \u654C\u65B9\u6CBB\u7597-${Math.round(sp * 100)}% + \u6211\u65B9\u5168\u4F53\u5E73\u5206\u539F\u672C${Math.round(mirrorPct * 100)}%\u6CBB\u7597`,
           type: "heal",
         });
       }
       if (t._syzHealBoostUntil && t._syzHealBoostUntil > state.time) {
         finalAmount = Math.floor(finalAmount * 1.3);
       }
+      caster.lastHealTarget = t.id;
+      t.lastHeal = { value: finalAmount, time: state.time };
       t.currentHp = Math.min(t.maxHp, t.currentHp + finalAmount);
       if (caster.def.id === "lxgz" && !isRuined(caster)) {
-        t._inspireAtkUntil = state.time + 5;
+        t._inspireAtkUntil = state.time + 6;
         t._inspireAtkMult = 1.2;
         trackTalent(
           state,
@@ -7710,16 +8479,13 @@ function executeSkill(caster, state, log) {
     });
   }
   if (sk.effects) {
-    if (
+    const effSuppress =
       caster._holySuppress &&
       (sk.tags?.includes("\u589E\u76CA") || sk.tags?.includes("\u63A7\u5236"))
-    ) {
-      const sp = caster._holySuppress;
-      for (const eff of sk.effects) {
-        if (eff.duration !== void 0)
-          eff.duration = Math.max(0.5, eff.duration * (1 - sp));
-        if (eff.value !== void 0) eff.value = Math.floor(eff.value * (1 - sp));
-      }
+        ? caster._holySuppress
+        : 0;
+    if (effSuppress > 0) {
+      const sp = effSuppress;
       if (
         sk.tags?.includes("\u589E\u76CA") &&
         sk.effects.some((e) => String(e.type).toLowerCase().includes("atk"))
@@ -7728,8 +8494,8 @@ function executeSkill(caster, state, log) {
           caster._holyMirror === 3
             ? 0.2
             : caster._holyMirror === 2
-              ? 0.1
-              : 0.05;
+              ? 0.15
+              : 0.1;
         for (const h of state.units.filter(
           (x) => x.team !== caster.team && !x.isDead && x.def.race === "holy"
         )) {
@@ -7744,6 +8510,39 @@ function executeSkill(caster, state, log) {
         });
       }
     }
+    if (caster._holySuppress && sk.tags?.includes("\u63A7\u5236")) {
+      const lv = caster._holyMirror;
+      const pct = lv === 3 ? 0.1 : lv === 2 ? 0.05 : 0;
+      if (pct > 0) {
+        const pool = state.units.filter(
+          (x) => x.team === caster.team && !x.isDead
+        );
+        const victim =
+          pool.length > 0
+            ? pool[Math.floor(Math.random() * pool.length)]
+            : void 0;
+        if (victim) {
+          const ratio = (sk.damage?.[0]?.atkRatio ?? 1) * pct;
+          const r = calcDamage(caster, victim, ratio, "pure" /* Pure */, {
+            isSkill: true,
+          });
+          victim.currentHp -= r.finalDamage;
+          for (const eff of sk.effects ?? []) {
+            victim.statuses.push({
+              type: eff.type,
+              remainingSeconds: Math.max(0.5, (eff.duration ?? 1) * pct),
+              stacks: 1,
+              value: eff.value,
+            });
+          }
+          log.push({
+            time: state.time,
+            text: `\u{1F54A} \u5723\u804C\u8005\u7F81\u7ECA(\u63A7\u5236\u53CD\u5236): ${victim.def.name} \u53D7\u5230 ${Math.round(pct * 100)}% \u540C\u6280\u80FD`,
+            type: "status",
+          });
+        }
+      }
+    }
     const selfBuffTypes = ["bloodrage", "inspire", "atkup", "defup"];
     const isSelfBuff = sk.effects.some((e) =>
       selfBuffTypes.includes(String(e.type).toLowerCase())
@@ -7751,7 +8550,11 @@ function executeSkill(caster, state, log) {
     const targets = isSelfBuff
       ? [caster]
       : sk.aoe
-        ? shuffle2(enemies).slice(0, sk.aoe.maxTargets || enemies.length)
+        ? sk.id === "xcl_star"
+          ? pick2x2(enemies)
+          : sk.id === "wlgyz_heal"
+            ? shuffle2(enemies).slice(0, 1)
+            : shuffle2(enemies).slice(0, sk.aoe.maxTargets || enemies.length)
         : [pickTarget2(enemies, sk.priority, false)].filter(Boolean);
     for (const t of targets) {
       if (!t || t.isDead) continue;
@@ -7774,8 +8577,12 @@ function executeSkill(caster, state, log) {
         ];
         if (negative.includes(eff.type) && t._immuneAbnormal) continue;
         if (
-          (eff.type === "silence" /* Silence */ ||
-            eff.type === "ruin") /* Ruin */ &&
+          [
+            "silence" /* Silence */,
+            "ruin" /* Ruin */,
+            "disarm" /* Disarm */,
+            "curse" /* Curse */,
+          ].includes(eff.type) &&
           t.def.id === "sq"
         )
           continue;
@@ -7789,13 +8596,16 @@ function executeSkill(caster, state, log) {
           eff.type === "bind" /* Bind */ &&
           Math.random() < 0.5
         ) {
-          effType = "armorBreak" /* ArmorBreak */;
+          effType = "armorBreak"; /* ArmorBreak */
         }
         t.statuses.push({
           type: effType,
-          remainingSeconds: eff.duration,
+          remainingSeconds:
+            eff.duration !== void 0
+              ? Math.max(0.5, eff.duration * (1 - effSuppress))
+              : eff.duration,
           stacks: 1,
-          value: val,
+          value: val !== void 0 ? Math.floor(val * (1 - effSuppress)) : val,
         });
         if (sk.id === "wqqs_move" && eff.type === "curse" /* Curse */) {
           const nearby = enemies.filter(
@@ -7846,7 +8656,20 @@ function executeSkill(caster, state, log) {
 }
 function addStat2(state, unitId, field, value) {
   const s = state.stats?.find((st) => st.unitId === unitId);
-  if (s && typeof s[field] === "number") s[field] += value;
+  if (s && typeof s[field] === "number") {
+    if (field === "survivalTime") s[field] = value;
+    else s[field] += value;
+  }
+  if (field === "totalDamageDealt" && value > 0) {
+    const u = state.units?.find((x) => x.id === unitId);
+    if (u) {
+      if (!u._dmgWindow) u._dmgWindow = [];
+      u._dmgWindow.push({ t: state.time, v: value });
+      const cutoff = state.time - 9;
+      u._dmgWindow = u._dmgWindow.filter((e) => e.t >= cutoff);
+      u._dmgRecent9s = u._dmgWindow.reduce((sum, e) => sum + e.v, 0);
+    }
+  }
 }
 function trackSkill(
   state,
@@ -7900,6 +8723,12 @@ function trackTalent(state, unitId, talentName, value, valueType = "count") {
   const t = state.talentStats[key];
   t.triggers += 1;
   t.value += value;
+  if (valueType === "damage") addStat2(state, unitId, "talentDamage", value);
+  else if (valueType === "heal")
+    addStat2(state, unitId, "talentHealing", value);
+  else if (valueType === "buff") addStat2(state, unitId, "buffValue", value);
+  else if (valueType === "control")
+    addStat2(state, unitId, "controlSeconds", value);
 }
 
 // scripts/batchBalance.ts
@@ -7911,7 +8740,8 @@ var ROSTER = {
   // v3.8: 追风中排(脆皮输出)
   warrior: ["fxz", "fdzs", "crzs", "hd", "zqz", "slzs", "kzs", "jdds"],
   mage: ["srm", "xjl", "syz", "xdds", "zs", "bmxz", "sjsn", "ynfs"],
-  undead: ["swxz", "kldd", "dyq", "mrsz", "wqqs", "yammxz", "wlgyz", "hyz"],
+  undead: ["kldd", "swxz", "mrsz", "dyq", "wqqs", "yammxz", "wlgyz", "hyz"],
+  // v3.16g: 地狱之犬→中排(输出核)
   dragon: ["dl", "bjl", "lyz", "xyfl", "hlyl", "bsxl", "xcl", "hbfl"],
   // v3.0: 暗影→星辰
   holy: ["sq", "sc", "xd", "fz", "qm", "qd", "sqz", "zq"],
@@ -7953,7 +8783,7 @@ function runOneDetailed(ally, enemy) {
     safety++;
   }
   return {
-    winner: state.winner || "enemy",
+    winner: state.winner || "draw",
     duration: state.time,
     stats: state.stats || [],
     skillStats: state.skillStats || {},
@@ -7965,7 +8795,7 @@ async function main() {
   const runs = args.length > 0 ? parseInt(args[0]) || RUNS : RUNS;
   console.log("=".repeat(78));
   console.log(
-    `v2.0 \u6279\u91CF\u5E73\u8861\u6D4B\u8BD5 (\u6BCF\u573A ${runs} \u5C40)`
+    `G3 \u6279\u91CF\u5E73\u8861\u6D4B\u8BD5 \xB7 GDD v3.4 (\u6BCF\u573A ${runs} \u5C40)`
   );
   console.log("=".repeat(78));
   const matrix = {};
@@ -8008,6 +8838,16 @@ async function main() {
       u.pureTaken = (u.pureTaken || 0) + (s.pureDamageReceived || 0);
       u.hitsTaken = (u.hitsTaken || 0) + (s.hitsTaken || 0);
       u.critsTaken = (u.critsTaken || 0) + (s.critsTaken || 0);
+      u.autoDmg = (u.autoDmg || 0) + (s.autoAttackDamage || 0);
+      u.skillDmg = (u.skillDmg || 0) + (s.skillDamage || 0);
+      u.talentDmg = (u.talentDmg || 0) + (s.talentDamage || 0);
+      u.talentHeal = (u.talentHeal || 0) + (s.talentHealing || 0);
+      u.buffVal = (u.buffVal || 0) + (s.buffValue || 0);
+      u.ctrlSec = (u.ctrlSec || 0) + (s.controlSeconds || 0);
+      u.skillHeal = (u.skillHeal || 0) + (s.skillHealing || 0);
+      u.shieldAbs = (u.shieldAbs || 0) + (s.shieldAbsorbed || 0);
+      u.blockRed = (u.blockRed || 0) + (s.blockReduced || 0);
+      u.survTime = (u.survTime || 0) + (s.survivalTime || 0);
     }
     for (const [skey, sv] of Object.entries(d.skillStats)) {
       const ss = sv;
@@ -8058,7 +8898,8 @@ async function main() {
       let aWins = 0;
       for (let k = 0; k < runs; k++) {
         const d = runOneDetailed(ROSTER[a], ROSTER[b]);
-        if (d.winner === "ally") aWins++;
+        if (d.winner === "ally") aWins += 1;
+        else if (d.winner === "draw") aWins += 0.5;
         accumulate(d);
       }
       matrix[a][b] = aWins;
@@ -8075,7 +8916,8 @@ async function main() {
     let firstWins = 0;
     for (let k = 0; k < runs; k++) {
       const d = runOneDetailed(ROSTER[a], ROSTER[a]);
-      if (d.winner === "ally") firstWins++;
+      if (d.winner === "ally") firstWins += 1;
+      else if (d.winner === "draw") firstWins += 0.5;
       accumulate(d);
     }
     matrix[a][a] = firstWins;
@@ -8150,7 +8992,7 @@ async function main() {
   L.push("");
   L.push(`> \u751F\u6210\u65F6\u95F4: ${now.toLocaleString("zh-CN")}`);
   L.push(
-    `> \u6BCF\u573A ${runs} \u5C40 | \u5F15\u64CE v2.0 | \u5B9A\u4F4D\u9635\u5BB9 (\u524D\u6392\u5766\u514B/\u4E2D\u6392\u8F93\u51FA/\u540E\u6392\u6CBB\u7597)`
+    `> \u6BCF\u573A ${runs} \u5C40 | GDD v3.4 / App v2.2 | \u5B9A\u4F4D\u9635\u5BB9 (\u524D\u6392\u5766\u514B/\u4E2D\u6392\u8F93\u51FA/\u540E\u6392\u6CBB\u7597)`
   );
   L.push("");
   L.push(`## \u7EFC\u5408\u80DC\u7387`);
@@ -8271,6 +9113,127 @@ async function main() {
     );
   }
   L.push("");
+  const roleRows = [];
+  let grandOutput = 0;
+  for (const [, u] of Object.entries(unitAgg))
+    grandOutput += (u.totalDamage || 0) / (u.count || 1);
+  for (const [name, u] of Object.entries(unitAgg)) {
+    const cnt = u.count || 1;
+    const race = unitMeta[name]?.race || "?";
+    const avg = (k) => (u[k] || 0) / cnt;
+    const out = avg("totalDamage");
+    const auto = avg("autoDmg");
+    const skill = avg("skillDmg");
+    const heal = avg("healing");
+    const shield = avg("shieldAbs");
+    const block = avg("blockRed");
+    const gain = heal + shield + block;
+    const surv = avg("survTime");
+    const per10 = (v) => (surv > 0 ? (v / surv) * 10 : 0);
+    roleRows.push({
+      name,
+      race,
+      raceCN: RACE_CN[race] || race,
+      out,
+      auto,
+      skill,
+      other: Math.max(0, out - auto - skill),
+      talent: avg("talentDmg"),
+      outShare: grandOutput > 0 ? (out / grandOutput) * 100 : 0,
+      surv,
+      out10: per10(out),
+      heal,
+      ls: avg("lifeSteal"),
+      skillHeal: avg("skillHeal"),
+      shield,
+      block,
+      gain,
+      gain10: per10(gain),
+      buff: avg("buffVal"),
+      ctrl: avg("ctrlSec"),
+      total10: per10(out) + per10(gain),
+      value: out + gain,
+      // 绝对贡献（不归一），与 10s综合 交叉验证
+      taken: avg("dmgTaken"),
+      kills: avg("kills"),
+      deaths: avg("deaths"),
+      casts: avg("skillCasts"),
+    });
+  }
+  const by10 = [...roleRows].sort((a, b) => b.total10 - a.total10);
+  const hiCut = by10[Math.floor(by10.length * 0.1)]?.total10 ?? Infinity;
+  const loCut = by10[Math.floor(by10.length * 0.9)]?.total10 ?? 0;
+  for (const r of roleRows) {
+    r.verdict =
+      r.total10 >= hiCut
+        ? "\u8D85\u6A21"
+        : r.total10 <= loCut
+          ? "\u5F85\u52A0\u5F3A"
+          : "\u6B63\u5E38";
+  }
+  const fmt = (v) => Math.round(v).toLocaleString("en-US");
+  const f1 = (v) => v.toFixed(1);
+  L.push(
+    `## \u89D2\u8272\u7EC6\u9897\u7C92\u5EA6\u660E\u7EC6 (v3.3-r5, ${totalBattles} \u573A)`
+  );
+  L.push("");
+  L.push(
+    `> **\u53E3\u5F84**: \u666E\u653B/\u6280\u80FD/\u5176\u4ED6 = **\u6765\u6E90\u5206\u8F68**\uFF0C\u4E09\u8005\u76F8\u52A0 \u2248 \u603B\u8F93\u51FA\uFF1B\u5929\u8D4B\u4F24\u5BB3 = **\u5F52\u56E0\u5206\u8F68**\uFF08\u4E0E\u6765\u6E90\u5206\u8F68\u91CD\u53E0\u3001\u4E0D\u53EF\u76F8\u52A0\uFF1B\u90E8\u5206\u5929\u8D4B\u57CB\u70B9\u8BB0\u7684\u662F\u6574\u6BB5\u6280\u80FD/DoT \u4F24\u5BB3\uFF0C\u53EF\u80FD\u4E0E\u6280\u80FD\u5217\u76F8\u7B49\u6216\u4E3A\u5176\u4F30\u7B97\u503C\uFF09\u3002`
+  );
+  L.push(
+    `> **\u6536\u76CA\u5408\u8BA1** = \u6CBB\u7597 + \u62A4\u76FE\u5438\u6536 + \u683C\u6321\u51CF\u4F24\uFF0C\u7EDF\u4E00\u4E3A\u8840\u91CF\u70B9\u6570\uFF1B\u5438\u8840/\u6280\u80FD\u6CBB\u7597\u662F\u6CBB\u7597\u7684\u5B50\u96C6\uFF0C\u5355\u5217\u5C55\u793A\u4F46\u4E0D\u91CD\u590D\u8BA1\u5165\u3002`
+  );
+  L.push(
+    `> \u62A4\u76FE\u5438\u6536/\u683C\u6321\u51CF\u4F24\u5F52\u5C5E**\u53D7\u76CA\u5355\u4F4D**\uFF08\u975E\u65BD\u653E\u8005\uFF09\uFF1B\u589E\u76CA(\u70B9\xB7\u79D2)\u4E0E\u63A7\u5236(s)\u662F\u4E0D\u540C\u5EA6\u91CF\u8861\uFF0C\u5355\u72EC\u5217\uFF0C\u4E0D\u5E76\u5165\u5408\u8BA1\u3002`
+  );
+  L.push(
+    `> 10s\u5F52\u4E00 = \u6570\u503C \xF7 \u5B58\u6D3B\u79D2 \xD7 10\uFF1B\u5B58\u6D3Bs = \u6700\u540E\u4E00\u6B21\u9635\u4EA1/\u6218\u6597\u7ED3\u675F\u65F6\u523B\uFF08\u590D\u6D3B\u5355\u4F4D\u4E0D\u91CD\u590D\u7D2F\u52A0\uFF09\u3002**\u603B\u8D21\u732E** = \u603B\u8F93\u51FA + \u6536\u76CA\u5408\u8BA1\uFF08\u7EDD\u5BF9\u503C\u3001\u4E0D\u5F52\u4E00\uFF09\uFF0C\u7528\u4E8E\u4E0E 10s\u7EFC\u5408 \u4EA4\u53C9\u9A8C\u8BC1\u3002`
+  );
+  L.push(
+    `> \u26A0\uFE0F \u77ED\u5B58\u6D3B\u6216\u300C\u9635\u4EA1\u540E\u4ECD\u53EF\u65BD\u6CD5\u300D\u7684\u89D2\u8272\uFF08\u5982\u6B89\u9053\u8005\uFF0910s\u5F52\u4E00\u4F1A\u88AB\u653E\u5927\uFF0C\u52A1\u5FC5\u7ED3\u5408\u603B\u8F93\u51FA/\u603B\u8D21\u732E/\u5B58\u6D3Bs \u4E00\u8D77\u770B\u3002\u8DE8\u65CF\u5BF9\u6BD4\u53D7\u5BF9\u5C40\u65F6\u957F\u5F71\u54CD\uFF0C\u5EFA\u8BAE\u4F18\u5148\u770B\u540C\u65CF\u5185\u6392\u540D\u3002\u5224\u5B9A: 10s\u7EFC\u5408 \u2265 P90 \u4E3A \u{1F534}\u8D85\u6A21\uFF0C\u2264 P10 \u4E3A \u{1F535}\u5F85\u52A0\u5F3A\u3002`
+  );
+  L.push("");
+  L.push(`### \u8F93\u51FA\u5206\u8F68 (\u6309\u603B\u8F93\u51FA\u964D\u5E8F)`);
+  L.push("");
+  L.push(
+    `| \u89D2\u8272 | \u79CD\u65CF | \u603B\u8F93\u51FA | \u666E\u653B | \u6280\u80FD | \u5176\u4ED6 | \u5929\u8D4B\u5F52\u56E0 | \u5360\u5168\u573A% | \u5B58\u6D3Bs | 10s\u8F93\u51FA | \u603B\u8D21\u732E | \u5224\u5B9A |`
+  );
+  L.push(`|------|------|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|`);
+  for (const r of [...roleRows].sort((a, b) => b.out - a.out)) {
+    L.push(
+      `| ${r.name} | ${r.raceCN} | ${fmt(r.out)} | ${fmt(r.auto)} | ${fmt(r.skill)} | ${fmt(r.other)} | ${fmt(r.talent)} | ${f1(r.outShare)} | ${f1(r.surv)} | ${fmt(r.out10)} | ${fmt(r.value)} | ${r.verdict === "\u8D85\u6A21" ? "\u{1F534} \u8D85\u6A21" : r.verdict === "\u5F85\u52A0\u5F3A" ? "\u{1F535} \u5F85\u52A0\u5F3A" : "\u26AA"} |`
+    );
+  }
+  L.push("");
+  L.push(
+    `### \u6536\u76CA\u5206\u8F68 (\u6309\u6536\u76CA\u5408\u8BA1\u964D\u5E8F)`
+  );
+  L.push("");
+  L.push(
+    `| \u89D2\u8272 | \u79CD\u65CF | \u6CBB\u7597 | \u5438\u8840 | \u6280\u80FD\u6CBB\u7597 | \u62A4\u76FE\u5438\u6536 | \u683C\u6321\u51CF\u4F24 | \u6536\u76CA\u5408\u8BA1 | 10s\u6536\u76CA | \u589E\u76CA\u70B9\xB7\u79D2 | \u63A7\u5236s | 10s\u7EFC\u5408 |`
+  );
+  L.push(`|------|------|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`);
+  for (const r of [...roleRows].sort((a, b) => b.gain - a.gain)) {
+    L.push(
+      `| ${r.name} | ${r.raceCN} | ${fmt(r.heal)} | ${fmt(r.ls)} | ${fmt(r.skillHeal)} | ${fmt(r.shield)} | ${fmt(r.block)} | ${fmt(r.gain)} | ${fmt(r.gain10)} | ${fmt(r.buff)} | ${f1(r.ctrl)} | ${fmt(r.total10)} |`
+    );
+  }
+  L.push("");
+  L.push(
+    `### \u8D85\u6A21 / \u5F85\u52A0\u5F3A\u901F\u89C8 (\u6309 10s \u7EFC\u5408\u8D21\u732E)`
+  );
+  L.push("");
+  L.push(
+    `| \u6392\u540D | \u{1F534} \u7591\u4F3C\u8D85\u6A21 | 10s\u7EFC\u5408 | | \u{1F535} \u5F85\u52A0\u5F3A | 10s\u7EFC\u5408 |`
+  );
+  L.push(`|:---:|------|---:|:---:|------|---:|`);
+  const bottom = [...by10].reverse();
+  for (let i = 0; i < 10 && i < by10.length; i++) {
+    L.push(
+      `| ${i + 1} | ${by10[i].name}(${by10[i].raceCN}) | ${fmt(by10[i].total10)} | | ${bottom[i].name}(${bottom[i].raceCN}) | ${fmt(bottom[i].total10)} |`
+    );
+  }
+  L.push("");
   L.push(
     `## \u6280\u80FD\u573A\u5747\u7EDF\u8BA1 (v2.14: \u62C6\u91CA\u653E\u4E0E\u547D\u4E2D)`
   );
@@ -8364,5 +9327,69 @@ async function main() {
   fs.writeFileSync(filePath, L.join("\n"), "utf-8");
   console.log(`
 \u{1F4C4} \u62A5\u544A\u5DF2\u4FDD\u5B58: ${filePath}`);
+  const verdictOf = (pct) =>
+    pct > 90
+      ? "\u78BE\u538B"
+      : pct > 70
+        ? "\u5927\u5E45\u514B\u5236"
+        : pct > 58
+          ? "\u5C0F\u5E45\u514B\u5236"
+          : pct >= 43
+            ? "\u5747\u52BF"
+            : "\u88AB\u514B";
+  const matchups = [];
+  for (let i = 0; i < RACES.length; i++) {
+    for (let j = i + 1; j < RACES.length; j++) {
+      const aPct = (matrix[RACES[i]][RACES[j]] / runs) * 100;
+      matchups.push({
+        a: RACE_CN[RACES[i]],
+        b: RACE_CN[RACES[j]],
+        aPct,
+        bPct: 100 - aPct,
+        verdict: verdictOf(aPct),
+        mirror: false,
+      });
+    }
+  }
+  for (const r of RACES) {
+    const aPct = (matrix[r][r] / runs) * 100;
+    matchups.push({
+      a: `${RACE_CN[r]}(\u5148\u624B)`,
+      b: `${RACE_CN[r]}(\u540E\u624B)`,
+      aPct,
+      bPct: 100 - aPct,
+      verdict: "\u955C\u50CF",
+      mirror: true,
+    });
+  }
+  const boardData = {
+    generated: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+    version: "GDD v3.4 / App v2.2",
+    battles: totalBattles,
+    avgDuration: Number(avgDuration),
+    rows: roleRows,
+    matchups,
+  };
+  const rolesJsonPath = path.join(reportDir, `roles_${ts}.json`);
+  fs.writeFileSync(rolesJsonPath, JSON.stringify(boardData, null, 2), "utf-8");
+  console.log(`\u{1F4E6} \u89D2\u8272\u6570\u636E: ${rolesJsonPath}`);
+  const tplCandidates = [
+    path.join(process.cwd(), "scripts", "role_board_template.html"),
+    path.join(__dirname, "role_board_template.html"),
+  ];
+  const tplPath = tplCandidates.find((p) => fs.existsSync(p));
+  if (tplPath) {
+    const payload = JSON.stringify(boardData).replace(/<\//g, "<\\/");
+    const html = fs
+      .readFileSync(tplPath, "utf-8")
+      .replace("__ROLE_DATA__", payload);
+    const boardPath = path.join(reportDir, `character_board_${ts}.html`);
+    fs.writeFileSync(boardPath, html, "utf-8");
+    console.log(`\u{1F4CA} \u89D2\u8272\u770B\u677F: ${boardPath}`);
+  } else {
+    console.log(
+      `\u26A0\uFE0F \u672A\u627E\u5230 role_board_template.html\uFF0C\u5DF2\u8DF3\u8FC7 HTML \u770B\u677F\uFF08JSON \u4ECD\u53EF\u7528\uFF09`
+    );
+  }
 }
 main();

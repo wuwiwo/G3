@@ -426,6 +426,7 @@ export const DataEditor: React.FC<Props> = ({ onClose }) => {
             const ov = bondOverrides[race] || {};
             const eff4 = tiers[4] || {};
             const atk = ov.attackBonus ?? eff4.attackBonus ?? 0;
+            const spd = ov.attackSpeedBonus ?? eff4.attackSpeedBonus ?? 0;
             const def = ov.defenseBonus ?? eff4.defenseBonus ?? 0;
             const hp = ov.hpBonus ?? eff4.hpBonus ?? 0;
             const sp = ov.special ?? eff4.special ?? "";
@@ -435,11 +436,14 @@ export const DataEditor: React.FC<Props> = ({ onClose }) => {
                 title={`${RACE_NAMES[race as Race]} · 2名/3名/4名分档`}
               >
                 <div style={{ fontSize: 10, color: "#555", marginBottom: 6 }}>
-                  2名: 攻+{tiers[2]?.attackBonus ?? 0}% 防+
+                  2名: 攻+{tiers[2]?.attackBonus ?? 0}% 攻速+
+                  {tiers[2]?.attackSpeedBonus ?? 0}% 防+
                   {tiers[2]?.defenseBonus ?? 0}% HP+{tiers[2]?.hpBonus ?? 0}%
-                  {" | "}3名: 攻+{tiers[3]?.attackBonus ?? 0}% 防+
+                  {" | "}3名: 攻+{tiers[3]?.attackBonus ?? 0}% 攻速+
+                  {tiers[3]?.attackSpeedBonus ?? 0}% 防+
                   {tiers[3]?.defenseBonus ?? 0}% HP+{tiers[3]?.hpBonus ?? 0}%
-                  {" | "}4名: 攻+{tiers[4]?.attackBonus ?? 0}% 防+
+                  {" | "}4名: 攻+{tiers[4]?.attackBonus ?? 0}% 攻速+
+                  {tiers[4]?.attackSpeedBonus ?? 0}% 防+
                   {tiers[4]?.defenseBonus ?? 0}% HP+{tiers[4]?.hpBonus ?? 0}%
                 </div>
                 <div style={{ display: "flex", gap: 10, marginBottom: 6 }}>
@@ -447,6 +451,11 @@ export const DataEditor: React.FC<Props> = ({ onClose }) => {
                     label="攻击+%(覆写)"
                     value={atk}
                     onChange={(v) => updateBond(race, { attackBonus: v })}
+                  />
+                  <LabeledInput
+                    label="攻速+%(覆写)"
+                    value={spd}
+                    onChange={(v) => updateBond(race, { attackSpeedBonus: v })}
                   />
                   <LabeledInput
                     label="防御+%(覆写)"

@@ -1,3 +1,19 @@
+/**
+ * v3.3: 全局战斗时钟。calcDamage 的调用方从未传 `now`，导致所有
+ * "XxxUntil > now" 时间判断退化为 >0（buff 永久生效）。由 processTick 每 tick 同步。
+ */
+let battleClock = 0;
+export function setBattleClock(t: number) {
+  battleClock = t;
+}
+function nowOf(extraOpts?: unknown): number {
+  const explicit =
+    extraOpts && typeof extraOpts === "object" && "now" in extraOpts
+      ? (extraOpts as { now?: number }).now
+      : undefined;
+  return explicit ?? battleClock;
+}
+
 import { ArenaUnit, DamageType, Race, StatusType } from "../types";
 
 /**
@@ -85,7 +101,8 @@ export function calcDamage(
   skillAtkRatio: number,
   type: DamageType,
   extraOpts?: {
-    ignoreBaseDef?: boolean;
+    ignoreBaseDef?: boolean; // v3.4 R4: 只保留额外防御
+    ignoreExtraDef?: boolean; // v3.4 R4: 只保留基础防御
     ignoreDefPct?: number; // 无视X%基础防御 (v2.3 猎人4人)
     fixedAdd?: number;
     defMultiplier?: number; // for pure dmg: targetDef × X
@@ -100,6 +117,8 @@ export function calcDamage(
     targetCurrentHpRatio?: number; // Zeus: % of target current HP
   }
 ): DamageResult {
+  // v3.4 R4: 无视额外防御标记（允许冰霜猎人天赋在内部按几率置位）
+  let ignoreExtraDef = (extraOpts as any)?.ignoreExtraDef === true;
   const result: DamageResult = {
     rawDamage: 0,
     afterDef: 0,
@@ -210,52 +229,92 @@ export function calcDamage(
       effectiveAtk *= (attacker as any)._hlRageAtkMult;
     }
     // v3.16c 冰霜猎人: 降攻击10%/层（≤30%）
-    if ((defender as any)._bslrAtkDown && (defender as any)._bslrDebuffUntil && ((defender as any)._bslrDebuffUntil > ((extraOpts as any)?.now ?? 0))) {
+    if (
+      (defender as any)._bslrAtkDown &&
+      (defender as any)._bslrDebuffUntil &&
+      (defender as any)._bslrDebuffUntil > nowOf(extraOpts)
+    ) {
       effectiveAtk *= 1 - (defender as any)._bslrAtkDown;
     }
     // v3.16 火枪手天赋: 对后排+20%/中排+10%伤害，60s后全场+50%
     if (attacker.def.id === "hqs") {
       const rowBonus = defender.row === 2 ? 0.2 : defender.row === 1 ? 0.1 : 0;
       effectiveAtk *= 1 + rowBonus;
-      if (((extraOpts as any)?.now ?? 0) > 60) effectiveAtk *= 1.5;
+      if (nowOf(extraOpts) > 60) effectiveAtk *= 1.5;
     }
-    // v2.46 战斗狂热: 伤害+50%
+    // v3.3 战斗狂热: 一阶段伤害+50%，二阶段伤害+100%
     if ((attacker as any)._frenzy) {
-      effectiveAtk *= 1.5;
+      effectiveAtk *= (attacker as any)._frenzy === 2 ? 2 : 1.5;
     }
     // v2.26 战士羁绊: 生命%攻击缩放 (满血攻)
     if ((attacker as any)._warriorAtkMult) {
       effectiveAtk *= (attacker as any)._warriorAtkMult;
     }
     // v2.9 追风游侠: 同排反击后+15%攻10s
-    if (attacker._zfyxAtkUntil && attacker._zfyxAtkUntil > (extraOpts as any)?.now) {
+    if (attacker._zfyxAtkUntil && attacker._zfyxAtkUntil > nowOf(extraOpts)) {
       effectiveAtk *= 1.15;
     }
     // v3.0 追风游侠: 敌方切入后全队+10%攻×层数 (叠4层)
-    if (attacker._zfyxAtkStacks && attacker._zfyxAtkUntil && attacker._zfyxAtkUntil > (extraOpts as any)?.now) {
+    if (
+      attacker._zfyxAtkStacks &&
+      attacker._zfyxAtkUntil &&
+      attacker._zfyxAtkUntil > nowOf(extraOpts)
+    ) {
       effectiveAtk *= 1 + attacker._zfyxAtkStacks * 0.1;
     }
+    // v3.3 殉道者: 目标造成伤害-20% 持续5s
+    if (
+      (attacker as any)._xdDmgDownUntil &&
+      (attacker as any)._xdDmgDownUntil > nowOf(extraOpts)
+    ) {
+      effectiveAtk *= 1 - ((attacker as any)._xdDmgDown || 0.2);
+    }
+    // v3.3 末日使者: 攻击处于异常状态的敌人造成伤害 +10%
+    if (attacker.def.id === "mrsz" && defender.statuses.length > 0) {
+      effectiveAtk *= attacker.hasRevived ? 1.2 : 1.1;
+    }
     // v3.0 追风游侠: 切入技能伤害-35%
-    if (attacker._cutinDmgRed && (extraOpts as any)?.now !== undefined) {
+    if (attacker._cutinDmgRed) {
       effectiveAtk *= attacker._cutinDmgRed;
     }
     // v3.0 殉道祝福: 造成伤害+10%
-    if (attacker._xdBlessUntil && attacker._xdBlessUntil > ((extraOpts as any)?.now ?? 0)) {
+    if (attacker._xdBlessUntil && attacker._xdBlessUntil > nowOf(extraOpts)) {
       effectiveAtk *= 1.1;
     }
     // v3.0 驱魔者: 攻+10%×层
-    if (attacker.def.id === "qm" && attacker._qmLayers && attacker._qmUntil && attacker._qmUntil > ((extraOpts as any)?.now ?? 0)) {
-      effectiveAtk *= 1 + attacker._qmLayers * 0.1;
+    if (
+      attacker.def.id === "qm" &&
+      attacker._qmLayers &&
+      attacker._qmUntil &&
+      attacker._qmUntil > nowOf(extraOpts)
+    ) {
+      effectiveAtk *= 1 + attacker._qmLayers * 0.06; // v3.3 每层+6%攻
     }
     // v2.9 火枪手: 被切入攻击层数
-    if (attacker._hqsStacks && attacker._hqsExpire && attacker._hqsExpire > (extraOpts as any)?.now) {
+    if (
+      attacker._hqsStacks &&
+      attacker._hqsExpire &&
+      attacker._hqsExpire > nowOf(extraOpts)
+    ) {
       effectiveAtk *= 1 + attacker._hqsStacks * 0.25;
     }
     // v2.9 灵弦歌者激昂: 攻击+20%
-    if (attacker._inspireAtkUntil && attacker._inspireAtkUntil > (extraOpts as any)?.now && attacker._inspireAtkMult) {
+    if (
+      attacker._inspireAtkUntil &&
+      attacker._inspireAtkUntil > nowOf(extraOpts) &&
+      attacker._inspireAtkMult
+    ) {
       effectiveAtk *= attacker._inspireAtkMult;
     }
-    // 法师羁绊攻击倍率 (v2.3, buff过期由引擎重置)
+    // v3.3 猎人羁绊: 被 #切入 命中后叠层攻击（每层独立计时，最多 3 层）
+    if (attacker._hunterBondLayers?.length) {
+      const nowH = nowOf(extraOpts);
+      let hBonus = 0;
+      for (const l of attacker._hunterBondLayers)
+        if (l.expire > nowH) hBonus += l.value;
+      effectiveAtk *= 1 + hBonus;
+    }
+    // 法师羁绊攻击倍率 (v3.3: 每层独立计时，由 updateStatuses 重算)
     const mageMult = attacker._mageAtkMult || 1;
     result.rawDamage =
       effectiveAtk * skillAtkRatio * mageMult +
@@ -268,14 +327,20 @@ export function calcDamage(
   // --- Defense reduction ---
   if (type === DamageType.Physical) {
     let def = defender.currentPhysicalDef;
+    const baseDef = defender.basePhysicalDef ?? def;
     // v2.9 猛犸象卷曲: 防+50%
-    if (defender.statuses.some((s: any) => (s.type as string) === "curl")) def *= 1.5;
+    if (defender.statuses.some((s: any) => (s.type as string) === "curl"))
+      def *= 1.5;
     // v2.12 破甲: 基础防御失效, 额外防御50% (简化: def×0.5)
-    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak)) def *= 0.5;
+    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak))
+      def *= 0.5;
     // v2.12 龙吟者: 每龙+5%防/每非龙-4%防
     if ((defender as any)._lyzDefMult) def *= (defender as any)._lyzDefMult;
     // v3.16 裂地蛮熊拍击: 降20%物防6s
-    if ((defender as any)._lbmxArmorBreakUntil && (defender as any)._lbmxArmorBreakUntil > ((extraOpts as any)?.now ?? 0)) {
+    if (
+      (defender as any)._lbmxArmorBreakUntil &&
+      (defender as any)._lbmxArmorBreakUntil > nowOf(extraOpts)
+    ) {
       def *= 1 - ((defender as any)._lbmxArmorBreakPct || 0.2);
     }
     // v2.9 魂之引渡者: 魂能层数防御加成 (v2.13c: 每层8%→6%)
@@ -283,9 +348,14 @@ export function calcDamage(
     // v2.9 决斗大师: 击杀防御加成 (每层+3%)
     if (defender._jddsDefBonus) def *= 1 + defender._jddsDefBonus;
     // v2.26 战士羁绊: 生命%防御缩放 (残血防)
-    if ((defender as any)._warriorDefMult) def *= (defender as any)._warriorDefMult;
+    if ((defender as any)._warriorDefMult)
+      def *= (defender as any)._warriorDefMult;
     // v2.9 火枪手: 被切入防御层数
-    if (defender._hqsStacks && defender._hqsExpire && defender._hqsExpire > (extraOpts as any)?.now) {
+    if (
+      defender._hqsStacks &&
+      defender._hqsExpire &&
+      defender._hqsExpire > nowOf(extraOpts)
+    ) {
       def *= 1 + defender._hqsStacks * 0.7; // v3.0: 90→70%
     }
     // Curse: defender defense -10%
@@ -294,36 +364,52 @@ export function calcDamage(
     // ArmorBreak: base defense失效, extra defense 50% (total = current * 0.5)
     if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak))
       def *= 0.5;
-    if (extraOpts?.ignoreBaseDef) {
-      def = 0; // Ignore all defense for counter-attack etc.
-    }
+    // v3.4 R4: 基础/额外防御分层在分支末尾统一处理（旧实现 def=0 已移除）
     // v2.12 冰封: 免疫物理伤害 (寒冰飞龙冰封治疗)
-    if (type === DamageType.Physical && defender.statuses.some((s: any) => s.type === StatusType.Freeze)) {
+    if (
+      type === DamageType.Physical &&
+      defender.statuses.some((s: any) => s.type === StatusType.Freeze)
+    ) {
       result.rawDamage = 0;
       result.finalDamage = 0;
       return result;
     }
     // 无视部分基础防御 (v2.3: 猎人4人-20%基础防御)
     let ignoreDef = extraOpts?.ignoreDefPct ?? 0;
-    // v2.9 冰霜猎人天赋: 35%几率无视目标基础防御 (受击失效3s)
-    if (attacker.def.id === "bslr" && attacker._bslrBreakUntil && attacker._bslrBreakUntil > (extraOpts as any)?.now) {
+    // v3.4 R4: 冰霜猎人天赋 37.5%几率无视【额外防御】 + 目标-25%受疗2s（同一次触发）；受击失效1s
+    // 技能视为攻击按 40% 判定；DoT 每跳的受疗判定在 battle.ts 的 bslr_dot 结算处
+    const bslrChance = (extraOpts as any)?.isSkill === true ? 0.4 : 0.375;
+    const bslrActive =
+      attacker.def.id === "bslr" &&
+      !(
+        attacker._bslrBreakUntil && attacker._bslrBreakUntil > nowOf(extraOpts)
+      );
+    if (attacker.def.id === "bslr" && !bslrActive) {
       ignoreDef = 0;
-    } else if (attacker.def.id === "bslr" && Math.random() < 0.35) {
-      ignoreDef = 1;
-    }
-    // v3.0 冰霜猎人: 25%几率使目标受到治疗效果-60% 4s
-    if (attacker.def.id === "bslr" && !(attacker._bslrBreakUntil && attacker._bslrBreakUntil > ((extraOpts as any)?.now ?? 0)) && Math.random() < 0.25) {
-      defender._antiHealMult = 0.4;
-      defender._antiHealUntil = ((extraOpts as any)?.now ?? 0) + 4;
+    } else if (bslrActive && Math.random() < bslrChance) {
+      ignoreExtraDef = true; // 无视额外防御，保留基础防御
+      defender._antiHealMult = 0.75;
+      defender._antiHealUntil = nowOf(extraOpts) + 2;
     }
     // v3.0 祈祷者: 无敌
-    if (defender._qdInvulnUntil && defender._qdInvulnUntil > ((extraOpts as any)?.now ?? 0)) {
+    if (defender._qdInvulnUntil && defender._qdInvulnUntil > nowOf(extraOpts)) {
       result.finalDamage = 0;
       return result;
     }
     // v3.0 祈祷者: 减伤
     let holyDr = 1;
-    if (defender._qdDrUntil && defender._qdDrUntil > ((extraOpts as any)?.now ?? 0) && defender._qdDrPct) {
+    // v3.3 龙吟者: 20% 减伤 4s
+    if (
+      (defender as any)._lyzDrUntil &&
+      (defender as any)._lyzDrUntil > nowOf(extraOpts)
+    ) {
+      holyDr *= 1 - ((defender as any)._lyzDr || 0.2);
+    }
+    if (
+      defender._qdDrUntil &&
+      defender._qdDrUntil > nowOf(extraOpts) &&
+      defender._qdDrPct
+    ) {
       holyDr *= 1 - defender._qdDrPct;
     }
     // v3.16 嚎叫巨牛激怒: 减伤35%
@@ -331,28 +417,43 @@ export function calcDamage(
       holyDr *= 1 - (defender as any)._hlRageDrMult;
     }
     // v3.16 美杜莎天赋: 受指向性技能减伤20%，累积3次后40%+石化施法者2s
-    if (defender.def.id === "mds" && (extraOpts as any)?.isSkill === true) { // v3.16: 指向性技能触发
-      const now = (extraOpts as any)?.now ?? 0;
+    if (defender.def.id === "mds" && (extraOpts as any)?.isSkill === true) {
+      // v3.16: 指向性技能触发
+      const now = nowOf(extraOpts);
       defender._mdsHitCount = (defender._mdsHitCount || 0) + 1;
       defender._mdsHitUntil = now;
       const stacks = Math.min(3, defender._mdsHitCount);
       holyDr *= 1 - (stacks >= 3 ? 0.4 : 0.2);
       if (stacks >= 3 && defender._mdsPunished !== now) {
         defender._mdsPunished = now;
-        attacker.statuses.push({ type: StatusType.Petrify, remainingSeconds: 2, stacks: 1 });
+        attacker.statuses.push({
+          type: StatusType.Petrify,
+          remainingSeconds: 2,
+          stacks: 1,
+        });
       }
     }
     // v3.0 圣骑士圣之护盾: 魔伤-30% (物理分支不适用, 魔法分支在 calcDamage 外层处理)
-    if (defender._sqShieldUntil && defender._sqShieldUntil > ((extraOpts as any)?.now ?? 0) && (type as any) === DamageType.Magical && (defender as any)._sqShieldPhys) {
+    if (
+      defender._sqShieldUntil &&
+      defender._sqShieldUntil > nowOf(extraOpts) &&
+      (type as any) === DamageType.Magical
+    ) {
+      // v3.3 修死代码
       holyDr *= 0.7;
     }
     // v3.0 驱魔者: 防+20%×层
-    if (defender.def.id === "qm" && defender._qmLayers && defender._qmUntil && defender._qmUntil > ((extraOpts as any)?.now ?? 0)) {
+    if (
+      defender.def.id === "qm" &&
+      defender._qmLayers &&
+      defender._qmUntil &&
+      defender._qmUntil > nowOf(extraOpts)
+    ) {
       if (type === DamageType.Physical) def *= 1 + defender._qmLayers * 0.2;
       else if (type === DamageType.Magical) def *= 1 + defender._qmLayers * 0.2;
     }
     // v3.0 殉道祝福: 受到伤害-10%
-    if (defender._xdBlessUntil && defender._xdBlessUntil > ((extraOpts as any)?.now ?? 0)) {
+    if (defender._xdBlessUntil && defender._xdBlessUntil > nowOf(extraOpts)) {
       holyDr *= 0.9;
     }
     // P1修复: 圣裁者减伤 (敌方每增益单位5%)
@@ -360,9 +461,12 @@ export function calcDamage(
       holyDr *= 1 - defender._scDr;
     }
     result.afterOtherReduction *= holyDr;
-    if (ignoreDef > 0) {
-      def *= 1 - ignoreDef;
-    }
+    // v3.4 R4: 基础防御 = basePart，额外防御 = extraPart
+    const basePart = Math.min(baseDef, Math.max(0, def));
+    const extraPart = Math.max(0, def - basePart);
+    if (ignoreExtraDef) def = basePart;
+    else if (extraOpts?.ignoreBaseDef) def = extraPart;
+    else if (ignoreDef > 0) def = basePart * (1 - ignoreDef) + extraPart;
     const defRed = calcDefReduction(def);
     result.afterDef = result.rawDamage * (1 - defRed);
     // v2.4: 物理伤害减伤 (亡灵4人 - 克物理流)
@@ -371,14 +475,20 @@ export function calcDamage(
     }
   } else if (type === DamageType.Magical) {
     let def = defender.currentMagicalDef;
+    const baseDef = defender.baseMagicalDef ?? def;
     // v2.9 猛犸象卷曲: 防+50%
-    if (defender.statuses.some((s: any) => (s.type as string) === "curl")) def *= 1.5;
+    if (defender.statuses.some((s: any) => (s.type as string) === "curl"))
+      def *= 1.5;
     // v2.12 破甲: 基础防御失效, 额外防御50% (简化: def×0.5)
-    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak)) def *= 0.5;
+    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak))
+      def *= 0.5;
     // v2.12 龙吟者: 每龙+5%防/每非龙-4%防
     if ((defender as any)._lyzDefMult) def *= (defender as any)._lyzDefMult;
     // v3.16 裂地蛮熊拍击: 降20%物防6s
-    if ((defender as any)._lbmxArmorBreakUntil && (defender as any)._lbmxArmorBreakUntil > ((extraOpts as any)?.now ?? 0)) {
+    if (
+      (defender as any)._lbmxArmorBreakUntil &&
+      (defender as any)._lbmxArmorBreakUntil > nowOf(extraOpts)
+    ) {
       def *= 1 - ((defender as any)._lbmxArmorBreakPct || 0.2);
     }
     // v2.9 魂之引渡者: 魂能层数防御加成 (v2.13c: 每层8%→6%)
@@ -386,9 +496,14 @@ export function calcDamage(
     // v2.9 决斗大师: 击杀防御加成 (每层+3%)
     if (defender._jddsDefBonus) def *= 1 + defender._jddsDefBonus;
     // v2.26 战士羁绊: 生命%防御缩放 (残血防)
-    if ((defender as any)._warriorDefMult) def *= (defender as any)._warriorDefMult;
+    if ((defender as any)._warriorDefMult)
+      def *= (defender as any)._warriorDefMult;
     // v2.9 火枪手: 被切入防御层数
-    if (defender._hqsStacks && defender._hqsExpire && defender._hqsExpire > (extraOpts as any)?.now) {
+    if (
+      defender._hqsStacks &&
+      defender._hqsExpire &&
+      defender._hqsExpire > nowOf(extraOpts)
+    ) {
       def *= 1 + defender._hqsStacks * 0.7; // v3.0: 90→70%
     }
     // Curse: -10% mdef
@@ -400,6 +515,11 @@ export function calcDamage(
     // Petrify: +100% mdef
     if (defender.statuses.some((s: any) => s.type === StatusType.Petrify))
       def *= 2;
+    // v3.4 R4: 魔法分支同样做基础/额外防御分层
+    const basePart = Math.min(baseDef, Math.max(0, def));
+    const extraPart = Math.max(0, def - basePart);
+    if (ignoreExtraDef) def = basePart;
+    else if (extraOpts?.ignoreBaseDef) def = extraPart;
     const defRed = calcDefReduction(def);
     result.afterDef = result.rawDamage * (1 - defRed);
   } else {
@@ -427,8 +547,14 @@ export function calcDamage(
     otherReduction *= inspire.value ?? 0.7;
   }
   // v2.12 智慧猩鼓舞减伤: 物减15% / 魔减25% (按文档区分)
-  if ((defender as any)._zzxDrUntil && (defender as any)._zzxDrUntil > (extraOpts as any)?.now) {
-    otherReduction *= type === DamageType.Physical ? 1 - ((defender as any)._zzxDrPhys || 0) : 1 - ((defender as any)._zzxDrMag || 0.25);
+  if (
+    (defender as any)._zzxDrUntil &&
+    (defender as any)._zzxDrUntil > nowOf(extraOpts)
+  ) {
+    otherReduction *=
+      type === DamageType.Physical
+        ? 1 - ((defender as any)._zzxDrPhys || 0)
+        : 1 - ((defender as any)._zzxDrMag || 0.25);
   }
   // Apply permanent damage reduction (e.g. Dragon bond base DR)
   let permDR = (defender as any).damageReduction || 0;
@@ -487,6 +613,23 @@ export function calcDamage(
 
   // Fatal strike handled externally by applyFatalStrike()
 
+  // v3.3 圣之护盾: 反弹 10% 原本伤害（减免前 rawDamage）至发动者，纯粹伤害
+  if (
+    defender._sqShieldUntil &&
+    defender._sqShieldUntil > nowOf(extraOpts) &&
+    result.finalDamage > 0 &&
+    attacker !== defender &&
+    !attacker.isDead
+  ) {
+    const reflect = Math.max(1, Math.floor(result.rawDamage * 0.1));
+    attacker.currentHp -= reflect;
+    (attacker as any).lastDamage = {
+      value: reflect,
+      time: nowOf(extraOpts),
+      type: "pure",
+    };
+  }
+
   return result;
 }
 
@@ -510,8 +653,15 @@ export function applyFatalStrike(
 }
 
 /** v2.12 减疗 (末日): 治疗效果-75% */
-function applyHealReduction(target: ArenaUnit, amount: number, extraOpts?: any): number {
-  if ((target as any)._healReductionUntil && (target as any)._healReductionUntil > ((extraOpts as any)?.now || 0)) {
+function applyHealReduction(
+  target: ArenaUnit,
+  amount: number,
+  extraOpts?: any
+): number {
+  if (
+    (target as any)._healReductionUntil &&
+    (target as any)._healReductionUntil > nowOf(extraOpts)
+  ) {
     return Math.floor(amount * (1 - ((target as any)._healReduction || 0)));
   }
   return amount;
@@ -552,7 +702,10 @@ export function calcHeal(
     heal = 0;
   }
   // v2.12 末日减疗: 治疗效果-75%
-  if ((target as any)._healReductionUntil && (target as any)._healReductionUntil > 0) {
+  if (
+    (target as any)._healReductionUntil &&
+    (target as any)._healReductionUntil > 0
+  ) {
     heal *= 1 - ((target as any)._healReduction || 0);
   }
   return Math.floor(Math.max(0, heal));

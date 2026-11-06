@@ -102,7 +102,9 @@ export const BatchTest: React.FC<Props> = ({
         safety++;
       }
 
-      if (state.winner === "ally") allyWins++;
+      // v3.3: 180s 超时判平局而不是失败，双方各计 0.5 胜
+      if (state.winner === "ally") allyWins += 1;
+      else if (state.winner === "draw") allyWins += 0.5;
 
       for (const s of (state as any).stats || []) {
         const u = state.units.find((x: any) => x.id === s.unitId);

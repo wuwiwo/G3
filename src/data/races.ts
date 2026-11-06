@@ -6,6 +6,7 @@ export interface BondEffect {
   hpBonus: number;
   hitRateBonus: number;
   evasionBonus: number;
+  attackSpeedBonus?: number; // v3.4 R1: 攻击速度加成（与 attackBonus 攻击力区分）
   magicalDefBonus?: number;
   special?: string;
 }
@@ -17,60 +18,66 @@ interface TierData {
 }
 
 const BASE_BONDS: Record<Race, TierData> = {
+  // v3.3 平衡性调整（docs/V3.3平衡性调整.md）：羁绊数值以该文档为准
   [Race.Beast]: {
-    2: { attackBonus: 5, defenseBonus: 10, special: "韧性+10%" }, // v2.22 用户设计: 攻5防10
+    2: { attackBonus: 5, defenseBonus: 10, special: "韧性+10%" },
     3: {
       attackBonus: 10,
-      defenseBonus: 15, // v3.15b: 20→15
-      special: "韧性+18%+对<50%HP敌人6%攻击纯粹伤害",
+      defenseBonus: 15,
+      special: "韧性+20%+对<75%HP敌人普攻附带6%攻击纯粹伤害",
     },
     4: {
       attackBonus: 20,
-      defenseBonus: 25, // v3.16d 评审护栏: 32→25（羁绊防单项≤30%）
-      special: "韧性+35%+对<75%HP敌人25%攻击纯粹伤害", // v3.16d: 35→25（≤30%护栏）
+      defenseBonus: 25,
+      special: "韧性+35%+对<75%HP敌人普攻附带15%攻击纯粹伤害",
     },
   },
   [Race.Hunter]: {
-    2: { attackBonus: 10, hitRateBonus: 10 }, // v3.16b 评审回滚
+    // v3.4 R1: 用户裁定「只增加攻击速度，不增加攻击力」
+    2: { attackSpeedBonus: 10, hitRateBonus: 10 },
     3: {
-      attackBonus: 20,
-      hitRateBonus: 15,
-      special: "反击40%伤害+12%吸血+每6次攻击额外1目标(40%伤害)", // v3.16f 回滚: 文档值
+      attackSpeedBonus: 15,
+      hitRateBonus: 20,
+      special: "受到[切入]技能伤害-15%+每6次攻击额外1目标(35%伤害)",
     },
     4: {
-      attackBonus: 30,
-      hitRateBonus: 30,
-      special: "反击75%伤害+20%吸血+每5次攻击额外1目标(80%伤害)", // v3.16f 回滚: 文档值
+      attackSpeedBonus: 30,
+      hitRateBonus: 40,
+      special:
+        "受到[切入]技能伤害-25%+自身+10%攻(最多3层/40s)+每5次攻击额外1目标(70%伤害)",
     },
   },
   [Race.Warrior]: {
-    // v2.29 用户微调: 恢复周期13/11/9s + 4名狂暴阈值80%
-    2: { hpBonus: 12, special: "每13s恢复3%HP+HP>50%时10%减伤(魔伤1.5倍)" },
+    2: { hpBonus: 10, special: "5%减伤(魔伤1.5倍)+每13s恢复3%最大HP" },
     3: {
-      hpBonus: 20, // v3.15: 25→20
-      special: "每11s恢复5%HP+HP>40%时12%减伤(魔伤1.5倍)+HP<60%时额外10%攻",
+      hpBonus: 20,
+      special: "10%减伤(魔伤1.5倍)+每11s恢复4%最大HP+HP<60%时额外10%攻",
     },
     4: {
-      hpBonus: 35, // v3.15: 50→35
-      special: "每9s恢复6%HP+HP>30%时15%减伤(魔伤2倍)+HP<80%时额外15%攻", // v3.15: 8%→6/20%→15/20→15
+      hpBonus: 35,
+      special: "15%减伤(魔伤1.5倍)+每9s恢复5%最大HP+HP<80%时额外15%攻",
     },
   },
   [Race.Mage]: {
-    2: { special: "-15%魔防" },
-    3: { special: "-20%魔防+冷却-7%+施法30%概率全体+3%攻20s" }, // v3.15c
-    4: { special: "-22%魔防+冷却-9%+施法30%概率全体+3%攻20s" }, // v3.15h: -25/-10→-22/-9
-  },
-  [Race.Undead]: {
-    2: { attackBonus: 5, evasionBonus: 5 },
+    2: { special: "-15%敌方魔防" },
     3: {
-      attackBonus: 10,
-      evasionBonus: 10,
-      special: "复活10s+每秒2%HP/8s+无敌2s",
+      special:
+        "-20%敌方魔防+友方技能冷却-7%+施法30%概率全体法师+2%攻15s(每层独立计时)",
     },
     4: {
-      attackBonus: 12, // v2.16 削弱: 15→12
-      evasionBonus: 15, // v2.13b 削弱: 21→15
-      special: "物理减伤9%+复活5s+每秒2.5%HP/10s+无敌2s", // v2.16: 减伤11%→9%
+      special:
+        "-30%敌方魔防+友方技能冷却-9%+施法50%概率全体法师+3%攻25s(每层独立计时)",
+    },
+  },
+  [Race.Undead]: {
+    2: { evasionBonus: 5 },
+    3: {
+      evasionBonus: 10,
+      special: "首次阵亡10s后复活至15%HP，2s后每秒失去3%最大HP(无法驱散)",
+    },
+    4: {
+      evasionBonus: 20,
+      special: "首次阵亡5s后复活至25%HP，3s后每秒失去2%最大HP(无法驱散)",
     },
   },
   [Race.Dragon]: {
@@ -81,14 +88,16 @@ const BASE_BONDS: Record<Race, TierData> = {
   },
   [Race.Holy]: {
     2: {
-      special: "敌方#增益/#治疗效果-10%：我方全体获得2%相同增益/平分3%治疗效果",
-    }, // v3.15h
+      special:
+        "敌方#增益/#治疗效果-10%：我方全体获得10%相同增益(4s)/平分原本4%治疗",
+    },
     3: {
-      special: "敌方#增益/#治疗/#控制效果-8%：我方4%增益/平分5%治疗/控制反制5%",
+      special:
+        "敌方#增益/#治疗/#控制效果-15%：我方15%增益(5s)/平分10%治疗/控制反制5%",
     },
     4: {
       special:
-        "敌方#增益/#治疗/#控制效果-12%：我方6%增益/平分8%治疗/控制反制8%",
+        "敌方#增益/#治疗/#控制效果-20%：我方20%增益(5s)/平分15%治疗/控制反制10%",
     },
   },
 };
@@ -116,6 +125,7 @@ export function getBondAtTier(race: Race, count: number): BondEffect {
     defenseBonus: ov.defenseBonus ?? tier.defenseBonus ?? 0,
     hpBonus: ov.hpBonus ?? tier.hpBonus ?? 0,
     hitRateBonus: ov.hitRateBonus ?? tier.hitRateBonus ?? 0,
+    attackSpeedBonus: ov.attackSpeedBonus ?? tier.attackSpeedBonus ?? 0,
     evasionBonus: ov.evasionBonus ?? tier.evasionBonus ?? 0,
     special: ov.special ?? tier.special,
   };

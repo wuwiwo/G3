@@ -6,6 +6,7 @@ import StatsPanel from "./components/StatsPanel";
 import DataEditor from "./components/DataEditor";
 import UnitDetail from "./components/UnitDetail";
 import { BatchTest } from "./components/BatchTest";
+import { RoleBoard } from "./components/RoleBoard";
 import KillFeed from "./components/KillFeed";
 import BattleHUD from "./components/BattleHUD";
 import { useBattle } from "./hooks/useBattleState";
@@ -13,7 +14,7 @@ import { useBattleAudio } from "./hooks/useBattleAudio";
 import { sound } from "./audio/SoundEngine";
 import { ArenaUnit } from "./types";
 
-const VERSION = "v2.2";
+const VERSION = "App v2.2 · GDD v3.4";
 
 const App: React.FC = () => {
   const {
@@ -44,6 +45,7 @@ const App: React.FC = () => {
   const [debug, setDebug] = useState(true);
   const [focusUnit, setFocusUnit] = useState<ArenaUnit | null>(null);
   const [testMode, setTestMode] = useState(false);
+  const [boardMode, setBoardMode] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(
     () => (localStorage.getItem("g3-theme") as "dark" | "light") || "dark"
   );
@@ -756,6 +758,8 @@ const App: React.FC = () => {
         />
       )}
 
+      {boardMode && <RoleBoard onClose={() => setBoardMode(false)} />}
+
       {/* Bottom tab bar */}
       <div
         style={{
@@ -804,10 +808,22 @@ const App: React.FC = () => {
           编辑
         </button>
         <button
-          onClick={() => setTestMode(!testMode)}
+          onClick={() => {
+            setTestMode(!testMode);
+            setBoardMode(false);
+          }}
           style={tabStyle(testMode)}
         >
           测试
+        </button>
+        <button
+          onClick={() => {
+            setBoardMode(!boardMode);
+            setTestMode(false);
+          }}
+          style={tabStyle(boardMode)}
+        >
+          看板
         </button>
       </div>
     </div>
