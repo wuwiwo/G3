@@ -221,8 +221,12 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
     let def = defender.currentPhysicalDef;
     const baseDef = defender.basePhysicalDef ?? def;
     if (defender.statuses.some((s) => s.type === "curl")) def *= 1.5;
-    if (defender.statuses.some((s) => s.type === "armorBreak" /* ArmorBreak */))
-      def *= 0.5;
+    if (
+      defender.statuses.some((s) => s.type === "armorBreak" /* ArmorBreak */)
+    ) {
+      const abBase = Math.min(baseDef, Math.max(0, def));
+      def = Math.max(0, def - abBase) * 0.5;
+    }
     if (defender._lyzDefMult) def *= defender._lyzDefMult;
     if (
       defender._lbmxArmorBreakUntil &&
@@ -242,8 +246,6 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
     }
     if (defender.statuses.some((s) => s.type === "curse" /* Curse */))
       def *= 0.9;
-    if (defender.statuses.some((s) => s.type === "armorBreak" /* ArmorBreak */))
-      def *= 0.5;
     if (
       type === "physical" /* Physical */ &&
       defender.statuses.some((s) => s.type === "freeze" /* Freeze */)
@@ -338,8 +340,12 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
     let def = defender.currentMagicalDef;
     const baseDef = defender.baseMagicalDef ?? def;
     if (defender.statuses.some((s) => s.type === "curl")) def *= 1.5;
-    if (defender.statuses.some((s) => s.type === "armorBreak" /* ArmorBreak */))
-      def *= 0.5;
+    if (
+      defender.statuses.some((s) => s.type === "armorBreak" /* ArmorBreak */)
+    ) {
+      const abBase = Math.min(baseDef, Math.max(0, def));
+      def = Math.max(0, def - abBase) * 0.5;
+    }
     if (defender._lyzDefMult) def *= defender._lyzDefMult;
     if (
       defender._lbmxArmorBreakUntil &&
@@ -359,8 +365,6 @@ function calcDamage(attacker, defender, skillAtkRatio, type, extraOpts) {
     }
     if (defender.statuses.some((s) => s.type === "curse" /* Curse */))
       def *= 0.9;
-    if (defender.statuses.some((s) => s.type === "armorBreak" /* ArmorBreak */))
-      def *= 0.5;
     if (defender.statuses.some((s) => s.type === "petrify" /* Petrify */))
       def *= 2;
     const basePart = Math.min(baseDef, Math.max(0, def));
@@ -3980,15 +3984,15 @@ var xd = {
   stats: {
     hp: 7520,
     // v3.7 ×1.15
-    attack: 1147.4,
-    // v3.3 成长 8→7: 454.4+7×99 // v3.10 ×1.12 // v3.9 ×0.85 // v3.8 ×0.9 // v3.7 ×1.1 // v3.6: ×1.15 // v3.5: 圣职者加强
+    attack: 1048.4,
+    // v3.4 R5 成长 7→6: 454.4+6×99（1级base不变） // v3.10 ×1.12 // v3.9 ×0.85 // v3.8 ×0.9 // v3.7 ×1.1 // v3.6: ×1.15 // v3.5: 圣职者加强
     physicalDef: 168.5,
     magicalDef: 252.8,
     // v3.7 ×1.5
     attackInterval: 3,
   },
-  growth: { hp: 60, attack: 7, physicalDef: 1.5, magicalDef: 1.5 },
-  // v3.3 8.0→7.0
+  growth: { hp: 60, attack: 6, physicalDef: 1.5, magicalDef: 1.5 },
+  // v3.4 R5 7.0→6.0
   talent:
     "\u6BCF\u5F53\u53CB\u65B9\u89D2\u8272\u9635\u4EA1\uFF0C\u7ED9\u4E88\u654C\u65B9\u5168\u4F53\u81EA\u8EAB\u653B\u51FB\xD730%\u7EAF\u7CB9\uFF0C\u6211\u65B9\u5269\u4F59\u5355\u4F4D\u6062\u590D\u6700\u5927\u751F\u547D\xD75%",
   // P2,
@@ -8761,13 +8765,11 @@ var positions = [
   [2, 1],
 ];
 var makeTeam = (ids) =>
-  ids
-    .slice(0, 8)
-    .map((charId, i) => ({
-      charId,
-      row: positions[i][0],
-      col: positions[i][1],
-    }));
+  ids.slice(0, 8).map((charId, i) => ({
+    charId,
+    row: positions[i][0],
+    col: positions[i][1],
+  }));
 var runs = parseInt(process.argv[2] || "300", 10) || 300;
 console.log(
   `=== \u955C\u50CF\u5BF9\u79F0\u6027\u4E13\u9879\uFF1A\u6BCF\u65CF ${runs} \u5C40 ===`

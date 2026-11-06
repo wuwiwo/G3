@@ -1528,12 +1528,12 @@ const xd: CharacterDef = {
   race: Race.Holy,
   stats: {
     hp: 7520, // v3.7 ×1.15
-    attack: 1147.4, // v3.3 成长 8→7: 454.4+7×99 // v3.10 ×1.12 // v3.9 ×0.85 // v3.8 ×0.9 // v3.7 ×1.1 // v3.6: ×1.15 // v3.5: 圣职者加强
+    attack: 1048.4, // v3.4 R5 成长 7→6: 454.4+6×99（1级base不变） // v3.10 ×1.12 // v3.9 ×0.85 // v3.8 ×0.9 // v3.7 ×1.1 // v3.6: ×1.15 // v3.5: 圣职者加强
     physicalDef: 168.5,
     magicalDef: 252.8, // v3.7 ×1.5
     attackInterval: 3,
   },
-  growth: { hp: 60, attack: 7.0, physicalDef: 1.5, magicalDef: 1.5 }, // v3.3 8.0→7.0
+  growth: { hp: 60, attack: 6.0, physicalDef: 1.5, magicalDef: 1.5 }, // v3.4 R5 7.0→6.0
   talent:
     "每当友方角色阵亡，给予敌方全体自身攻击×30%纯粹，我方剩余单位恢复最大生命×5%", // P2,
   skill: {

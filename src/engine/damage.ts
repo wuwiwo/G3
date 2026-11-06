@@ -331,9 +331,11 @@ export function calcDamage(
     // v2.9 猛犸象卷曲: 防+50%
     if (defender.statuses.some((s: any) => (s.type as string) === "curl"))
       def *= 1.5;
-    // v2.12 破甲: 基础防御失效, 额外防御50% (简化: def×0.5)
-    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak))
-      def *= 0.5;
+    // v3.4 R6: 破甲 = 基础防御失效，额外防御保留 50%（按 R4 分层，不再重复乘算）
+    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak)) {
+      const abBase = Math.min(baseDef, Math.max(0, def));
+      def = Math.max(0, def - abBase) * 0.5;
+    }
     // v2.12 龙吟者: 每龙+5%防/每非龙-4%防
     if ((defender as any)._lyzDefMult) def *= (defender as any)._lyzDefMult;
     // v3.16 裂地蛮熊拍击: 降20%物防6s
@@ -361,9 +363,7 @@ export function calcDamage(
     // Curse: defender defense -10%
     if (defender.statuses.some((s: any) => s.type === StatusType.Curse))
       def *= 0.9;
-    // ArmorBreak: base defense失效, extra defense 50% (total = current * 0.5)
-    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak))
-      def *= 0.5;
+    // v3.4 R6: 破甲已在分支开头按分层处理，此处不再重复
     // v3.4 R4: 基础/额外防御分层在分支末尾统一处理（旧实现 def=0 已移除）
     // v2.12 冰封: 免疫物理伤害 (寒冰飞龙冰封治疗)
     if (
@@ -479,9 +479,11 @@ export function calcDamage(
     // v2.9 猛犸象卷曲: 防+50%
     if (defender.statuses.some((s: any) => (s.type as string) === "curl"))
       def *= 1.5;
-    // v2.12 破甲: 基础防御失效, 额外防御50% (简化: def×0.5)
-    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak))
-      def *= 0.5;
+    // v3.4 R6: 破甲 = 基础防御失效，额外防御保留 50%（按 R4 分层，不再重复乘算）
+    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak)) {
+      const abBase = Math.min(baseDef, Math.max(0, def));
+      def = Math.max(0, def - abBase) * 0.5;
+    }
     // v2.12 龙吟者: 每龙+5%防/每非龙-4%防
     if ((defender as any)._lyzDefMult) def *= (defender as any)._lyzDefMult;
     // v3.16 裂地蛮熊拍击: 降20%物防6s
@@ -509,9 +511,7 @@ export function calcDamage(
     // Curse: -10% mdef
     if (defender.statuses.some((s: any) => s.type === StatusType.Curse))
       def *= 0.9;
-    // ArmorBreak: also applies to magical defense (both def types)
-    if (defender.statuses.some((s: any) => s.type === StatusType.ArmorBreak))
-      def *= 0.5;
+    // v3.4 R6: 破甲已在分支开头按分层处理，此处不再重复
     // Petrify: +100% mdef
     if (defender.statuses.some((s: any) => s.type === StatusType.Petrify))
       def *= 2;
